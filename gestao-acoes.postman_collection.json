@@ -1,0 +1,218 @@
+{
+  "info": {
+    "_postman_id": "d65de92b-f668-4c2f-b753-e3ea5bceb949",
+    "name": "gestao-acoes",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "48512139",
+    "_collection_link": "https://go.postman.co/collection/48512139-d65de92b-f668-4c2f-b753-e3ea5bceb949?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Corretoras",
+      "item": [
+        {
+          "name": "cadastro",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"cnpj\": \"02332886000104\", \r\n  \"cep\": \"01001000\",\r\n  \"numero\": \"100\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8080/corretoras",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "corretoras"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "listar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8080/corretoras",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "corretoras"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "findById",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8080/corretoras/1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "corretoras",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "buscar por CNPJ",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8080/corretoras/cnpj/02332886000104",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "corretoras",
+                "cnpj",
+                "02332886000104"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Acoes",
+      "item": [
+        {
+          "name": "cadastro",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"ticker\": \"AAPL\",\r\n  \"mercado\": \"INTERNACIONAL\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8080/acoes",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "acoes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "listar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8080/acoes",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "acoes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "findById",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8080/acoes/1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "acoes",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "buscar por ticker",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8080/acoes/ticker/PETR4",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "acoes",
+                "ticker",
+                "PETR4"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "atualizar cotacao",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8080/acoes/1/atualizar-cotacao",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "acoes",
+                "1",
+                "atualizar-cotacao"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
