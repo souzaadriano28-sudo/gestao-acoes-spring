@@ -227,7 +227,7 @@ Uso de SLF4J para rastreamento de execução.
 
 Documentação da API
 •	Postman
-•	Swagger (OpenAPI 3.0)
+•	Swagger (OpenAPI 3.0), para esta função estar funcicionando a aplicação deve estar em execução no intrllij e acessar o navegador utilizando este link:http://localhost:8080/swagger-ui/index.html
 
 15. Entregáveis
 O projeto entrega todos os itens solicitados:
