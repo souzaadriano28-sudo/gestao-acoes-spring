@@ -1,5 +1,7 @@
 package com.trabalho.gestao_acoes.services;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.trabalho.gestao_acoes.domains.Acao;
 import com.trabalho.gestao_acoes.domains.dtos.AcaoDTO;
 import com.trabalho.gestao_acoes.mappers.AcaoMapper;
@@ -17,6 +19,8 @@ import java.util.stream.Collectors;
 @Service
 public class AcaoService {
 
+    private static final Logger log = LoggerFactory.getLogger(AcaoService.class);
+
     @Autowired
     private AcaoRepository repository;
 
@@ -26,6 +30,8 @@ public class AcaoService {
 
     // RF07 e RF08: Cadastrar ação buscando cotação em tempo real
     public AcaoDTO insert(AcaoDTO dto) {
+
+        log.info("Iniciando cadastro de nova ação. Ticker: [{}], Mercado: [{}]", dto.getTicker(), dto.getMercado());
 
         // RF12: Impedir ticker duplicado
         String tickerFormatado = dto.getTicker().toUpperCase();
@@ -38,10 +44,13 @@ public class AcaoService {
         CotacaoStrategy estrategiaCerta = estrategias.stream()
                 .filter(e -> e.suportaMercado(dto.getMercado()))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Mercado não suportado. Digite NACIONAL ou INTERNACIONAL no JSON."));
+                .orElseThrow(() -> new RuntimeException("Mercado não suportado."));
 
-        // 2. Busca o preço real na API que "levantou a mão"
+        log.info("Estratégia selecionada para o ticker {}: {}", tickerFormatado, estrategiaCerta.getClass().getSimpleName());
+
         CotacaoBolsa cotacao = estrategiaCerta.buscarCotacao(tickerFormatado);
+
+        log.info("Cotação encontrada com sucesso! Preço: {} {}", cotacao.getPrecoAtual(), cotacao.getMoeda());
 
         // 3. Atualiza os dados para salvar
         dto.setTicker(tickerFormatado);
