@@ -4,6 +4,7 @@ import com.trabalho.gestao_acoes.domains.Acao;
 import com.trabalho.gestao_acoes.domains.Corretora;
 import com.trabalho.gestao_acoes.domains.PosicaoCarteira;
 import com.trabalho.gestao_acoes.domains.Transacao;
+import com.trabalho.gestao_acoes.domains.dtos.PosicaoDTO;
 import com.trabalho.gestao_acoes.domains.enums.TipoTransacao;
 import com.trabalho.gestao_acoes.repositories.AcaoRepository;
 import com.trabalho.gestao_acoes.repositories.CorretoraRepository;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class CarteiraService {
@@ -25,7 +27,6 @@ public class CarteiraService {
     private final CorretoraRepository corretoraRepository;
     private final List<CotacaoStrategy> estrategias;
 
-    // Construtor manual para Injeção de Dependência
     public CarteiraService(TransacaoRepository transacaoRepository,
                            PosicaoCarteiraRepository posicaoRepository,
                            AcaoRepository acaoRepository,
@@ -46,20 +47,16 @@ public class CarteiraService {
         Acao acao = acaoRepository.findByTicker(ticker)
                 .orElseThrow(() -> new RuntimeException("Ação não cadastrada no sistema"));
 
-        // Busca o preço real na API usando o padrão Strategy
         CotacaoStrategy estrategia = estrategias.stream()
                 .filter(e -> e.suportaMercado(mercado))
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("Mercado não suportado."));
 
-        // Supondo que CotacaoBolsa tem o método getPrecoAtual()
         Double precoAtual = estrategia.buscarCotacao(ticker).getPrecoAtual();
 
-        // Salva o histórico
         Transacao t = new Transacao(null, TipoTransacao.COMPRA, qtd, precoAtual, LocalDateTime.now(), acao, corretora);
         transacaoRepository.save(t);
 
-        // Atualiza a posição (Cálculo do Preço Médio)
         PosicaoCarteira posicao = posicaoRepository.findByAcaoTickerAndCorretoraId(ticker, corretoraId)
                 .orElse(new PosicaoCarteira(null, 0, 0.0, acao, corretora));
 
@@ -82,7 +79,6 @@ public class CarteiraService {
             throw new RuntimeException("Saldo insuficiente para venda");
         }
 
-        // Busca o preço real na API para vender
         CotacaoStrategy estrategia = estrategias.stream()
                 .filter(e -> e.suportaMercado(mercado))
                 .findFirst()
@@ -90,11 +86,9 @@ public class CarteiraService {
 
         Double precoVenda = estrategia.buscarCotacao(ticker).getPrecoAtual();
 
-        // Salva o histórico
         Transacao t = new Transacao(null, TipoTransacao.VENDA, qtd, precoVenda, LocalDateTime.now(), posicao.getAcao(), posicao.getCorretora());
         transacaoRepository.save(t);
 
-        // Atualiza a posição (Nota: Venda diminui a quantidade, mas NÃO altera o preço médio)
         posicao.setQuantidadeTotal(posicao.getQuantidadeTotal() - qtd);
         if (posicao.getQuantidadeTotal() == 0) {
             posicaoRepository.delete(posicao);
@@ -105,6 +99,8 @@ public class CarteiraService {
 
     public Double calcularSaldoTotal() {
         double saldoTotal = 0.0;
+        double taxaCambioFixa = 5.30; // <-- Câmbio fixado para o cálculo do patrimônio
+
         List<PosicaoCarteira> posicoes = posicaoRepository.findAll();
 
         for (PosicaoCarteira p : posicoes) {
@@ -114,9 +110,29 @@ public class CarteiraService {
                     .orElseThrow(() -> new RuntimeException("Mercado não suportado."));
 
             Double precoAtual = est.buscarCotacao(p.getAcao().getTicker()).getPrecoAtual();
+
+            // ==========================================
+            // CONVERSÃO DE MOEDA PARA O SALDO TOTAL
+            // ==========================================
+            if (p.getAcao().getMoeda().equalsIgnoreCase("USD")) {
+                precoAtual = precoAtual * taxaCambioFixa;
+            }
+
             saldoTotal += (p.getQuantidadeTotal() * precoAtual);
         }
 
         return saldoTotal;
+    }
+
+    public List<PosicaoDTO> listarPosicoes() {
+        return posicaoRepository.findAll().stream()
+                .map(p -> new PosicaoDTO(
+                        p.getAcao().getTicker(),
+                        p.getCorretora().getRazaoSocial(),
+                        p.getQuantidadeTotal(),
+                        p.getPrecoMedio(),
+                        p.getAcao().getMoeda() // Passando a moeda para o Front!
+                ))
+                .collect(Collectors.toList());
     }
 }

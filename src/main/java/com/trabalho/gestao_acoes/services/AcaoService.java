@@ -30,35 +30,54 @@ public class AcaoService {
 
     // RF07 e RF08: Cadastrar ação buscando cotação em tempo real
     public AcaoDTO insert(AcaoDTO dto) {
+        String tickerFormatado = dto.getTicker().toUpperCase();
+        log.info("Iniciando cadastro de nova ação. Ticker: [{}], Mercado: [{}]", tickerFormatado, dto.getMercado());
 
-        log.info("Iniciando cadastro de nova ação. Ticker: [{}], Mercado: [{}]", dto.getTicker(), dto.getMercado());
+        // ==========================================
+        // TRAVA 1: Validação Sintática do Ticker (Padrão Regex)
+        // ==========================================
+        if (dto.getMercado().equalsIgnoreCase("BRASIL")) {
+            // Regex: Exatamente 4 letras, seguidas de 1 ou 2 números (PETR4, TAEE11, AAPL34)
+            if (!tickerFormatado.matches("^[A-Z]{4}\\d{1,2}$")) {
+                throw new RuntimeException("Formato inválido. Tickers nacionais possuem 4 letras e 1 ou 2 números (Ex: PETR4, TAEE11).");
+            }
+        } else if (dto.getMercado().equalsIgnoreCase("AMERICANO")) {
+            // Regex: De 1 a 5 letras, NENHUM número (AAPL, TSLA, F)
+            if (!tickerFormatado.matches("^[A-Z]{1,5}$")) {
+                throw new RuntimeException("Formato inválido. Tickers americanos contêm apenas letras (Ex: AAPL, MSFT, TSLA).");
+            }
+        }
 
         // RF12: Impedir ticker duplicado
-        String tickerFormatado = dto.getTicker().toUpperCase();
         Optional<Acao> existente = repository.findByTicker(tickerFormatado);
         if (existente.isPresent()) {
             throw new RuntimeException("O Ticker " + tickerFormatado + " já está cadastrado.");
         }
 
-        // 1. O Padrão Strategy em Ação: Acha a API correta sem usar IF/ELSE
         CotacaoStrategy estrategiaCerta = estrategias.stream()
                 .filter(e -> e.suportaMercado(dto.getMercado()))
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("Mercado não suportado."));
 
-        log.info("Estratégia selecionada para o ticker {}: {}", tickerFormatado, estrategiaCerta.getClass().getSimpleName());
-
         CotacaoBolsa cotacao = estrategiaCerta.buscarCotacao(tickerFormatado);
+
+        // ==========================================
+        // TRAVA 2: Validação de Moeda cruzada
+        // ==========================================
+        if (dto.getMercado().equalsIgnoreCase("BRASIL") && !cotacao.getMoeda().equalsIgnoreCase("BRL")) {
+            throw new RuntimeException("O ativo " + tickerFormatado + " não é Nacional. A API retornou " + cotacao.getMoeda() + ".");
+        }
+        if (dto.getMercado().equalsIgnoreCase("AMERICANO") && !cotacao.getMoeda().equalsIgnoreCase("USD")) {
+            throw new RuntimeException("O ativo " + tickerFormatado + " não é Internacional. A API retornou " + cotacao.getMoeda() + ".");
+        }
 
         log.info("Cotação encontrada com sucesso! Preço: {} {}", cotacao.getPrecoAtual(), cotacao.getMoeda());
 
-        // 3. Atualiza os dados para salvar
         dto.setTicker(tickerFormatado);
         dto.setCotacaoAtual(cotacao.getPrecoAtual());
         dto.setMoeda(cotacao.getMoeda());
         dto.setDataHoraCotacao(LocalDateTime.now());
 
-        // 4. Salva no banco e retorna
         Acao entity = AcaoMapper.toEntity(dto);
         entity = repository.save(entity);
 

@@ -1,9 +1,12 @@
 package com.trabalho.gestao_acoes.resources;
 
+import com.trabalho.gestao_acoes.domains.dtos.PosicaoDTO;
 import com.trabalho.gestao_acoes.domains.dtos.TransacaoRequestDTO;
 import com.trabalho.gestao_acoes.services.CarteiraService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/carteira")
@@ -30,5 +33,10 @@ public class CarteiraResource {
     @GetMapping("/saldo-total")
     public ResponseEntity<Double> getSaldoTotal() {
         return ResponseEntity.ok(service.calcularSaldoTotal());
+    }
+
+    @GetMapping("/posicoes")
+    public ResponseEntity<List<PosicaoDTO>> listarPosicoes() {
+        return ResponseEntity.ok(service.listarPosicoes());
     }
 }

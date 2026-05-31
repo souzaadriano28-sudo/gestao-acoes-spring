@@ -58,7 +58,8 @@ public class CorretoraService {
         if (dadosCnpj.getCnaeFiscal() != null && cnaesValidos.contains(dadosCnpj.getCnaeFiscal())) {
             dto.setValidadaNaCvm(true);
         } else {
-            dto.setValidadaNaCvm(false); // Marca como não validada se for padaria, posto de gasolina, etc.
+            // Aborta o cadastro jogando um erro para a nossa caixinha vermelha do Angular pegar!
+            throw new RuntimeException("O CNPJ informado não pertence a uma instituição financeira ou corretora autorizada pela CVM.");
         }
 
         // 5. RF04 e RN04: Consultar e validar CEP
