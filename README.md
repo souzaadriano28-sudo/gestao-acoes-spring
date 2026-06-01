@@ -2,7 +2,6 @@
 
 ![Java](https://img.shields.io/badge/Java-17-blue)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-green)
-![Status](https://img.shields.io/badge/status-em%20desenvolvimento-yellow)
 
 ## 📌 Sobre o Projeto
 
