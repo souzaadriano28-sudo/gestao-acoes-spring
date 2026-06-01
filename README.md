@@ -260,3 +260,9 @@ Este projeto demonstra, na prática:
 O resultado é uma API **organizada, escalável e próxima de sistemas reais do mercado financeiro**.
 
 ---
+
+👥Desenvolvedores
+
+Adriano Alves, Breno Rogerio e Vinicius Oliveira
+
+---
