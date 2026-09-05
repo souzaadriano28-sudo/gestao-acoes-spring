@@ -37,6 +37,7 @@ jobs:
 
       - name: Compile and test with Maven Wrapper
         run: |
+          bash ./mvnw --version
           bash ./mvnw -B verify
           exit 1
 
