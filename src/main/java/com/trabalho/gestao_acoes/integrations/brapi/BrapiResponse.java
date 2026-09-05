@@ -1,6 +1,7 @@
 package com.trabalho.gestao_acoes.integrations.brapi;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 public class BrapiResponse {
     private List<Result> results;
@@ -9,11 +10,11 @@ public class BrapiResponse {
     public void setResults(List<Result> results) { this.results = results; }
 
     public static class Result {
-        private Double regularMarketPrice;
+        private BigDecimal regularMarketPrice;
         private String currency;
 
-        public Double getRegularMarketPrice() { return regularMarketPrice; }
-        public void setRegularMarketPrice(Double regularMarketPrice) { this.regularMarketPrice = regularMarketPrice; }
+        public BigDecimal getRegularMarketPrice() { return regularMarketPrice; }
+        public void setRegularMarketPrice(BigDecimal regularMarketPrice) { this.regularMarketPrice = regularMarketPrice; }
 
         public String getCurrency() { return currency; }
         public void setCurrency(String currency) { this.currency = currency; }

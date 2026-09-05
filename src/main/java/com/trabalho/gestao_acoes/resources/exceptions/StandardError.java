@@ -2,39 +2,37 @@ package com.trabalho.gestao_acoes.resources.exceptions;
 
 import java.io.Serializable;
 import java.time.Instant;
+import java.util.List;
 
 public class StandardError implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private Instant timestamp; // Data e hora do erro
-    private Integer status;    // Código HTTP (ex: 400, 404)
-    private String error;      // Título do erro
-    private String message;    // A mensagem amigável para o usuário
-    private String path;       // Qual rota deu erro
+    private final Instant timestamp;
+    private final Integer status;
+    private final String code;
+    private final String error;
+    private final String message;
+    private final String path;
+    private final List<FieldViolation> fieldErrors;
 
-    public StandardError() {}
-
-    public StandardError(Instant timestamp, Integer status, String error, String message, String path) {
+    public StandardError(Instant timestamp, Integer status, String code, String error,
+                         String message, String path, List<FieldViolation> fieldErrors) {
         this.timestamp = timestamp;
         this.status = status;
+        this.code = code;
         this.error = error;
         this.message = message;
         this.path = path;
+        this.fieldErrors = fieldErrors == null ? List.of() : List.copyOf(fieldErrors);
     }
 
-    // Getters e Setters
     public Instant getTimestamp() { return timestamp; }
-    public void setTimestamp(Instant timestamp) { this.timestamp = timestamp; }
-
     public Integer getStatus() { return status; }
-    public void setStatus(Integer status) { this.status = status; }
-
+    public String getCode() { return code; }
     public String getError() { return error; }
-    public void setError(String error) { this.error = error; }
-
     public String getMessage() { return message; }
-    public void setMessage(String message) { this.message = message; }
-
     public String getPath() { return path; }
-    public void setPath(String path) { this.path = path; }
+    public List<FieldViolation> getFieldErrors() { return fieldErrors; }
+
+    public record FieldViolation(String field, String message) implements Serializable {}
 }

@@ -6,103 +6,72 @@ import com.trabalho.gestao_acoes.integrations.brasilapi.BrasilApiResponse;
 import com.trabalho.gestao_acoes.integrations.viacep.ViaCepResponse;
 import com.trabalho.gestao_acoes.mappers.CorretoraMapper;
 import com.trabalho.gestao_acoes.repositories.CorretoraRepository;
+import com.trabalho.gestao_acoes.services.exceptions.BusinessException;
+import com.trabalho.gestao_acoes.services.exceptions.ConflictException;
+import com.trabalho.gestao_acoes.services.exceptions.NotFoundException;
+import com.trabalho.gestao_acoes.services.exceptions.UpstreamInvalidResponseException;
+import com.trabalho.gestao_acoes.services.exceptions.UpstreamNotFoundException;
 import com.trabalho.gestao_acoes.services.ports.CepClientPort;
 import com.trabalho.gestao_acoes.services.ports.CnpjClientPort;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 @Service
 public class CorretoraService {
+    private static final Set<Integer> CNAES_VALIDOS = Set.of(6612601, 6612602, 6431900);
+    private final CorretoraRepository repository;
+    private final CnpjClientPort cnpjClient;
+    private final CepClientPort cepClient;
 
-    @Autowired
-    private CorretoraRepository repository;
+    public CorretoraService(CorretoraRepository repository, CnpjClientPort cnpjClient, CepClientPort cepClient) {
+        this.repository = repository;
+        this.cnpjClient = cnpjClient;
+        this.cepClient = cepClient;
+    }
 
-    @Autowired
-    private CnpjClientPort cnpjClient;
-
-    @Autowired
-    private CepClientPort cepClient;
-
-    // RF01: Cadastrar corretora
     public CorretoraDTO insert(CorretoraDTO dto) {
+        if (dto.getId() != null) throw new BusinessException("VALIDATION_ERROR", "O ID não deve ser informado no cadastro.");
+        String cnpj = Identifiers.cnpjFromBody(dto.getCnpj());
+        if (repository.findByCnpj(cnpj).isPresent()) throw new ConflictException("DUPLICATE_CNPJ", "CNPJ já cadastrado.");
 
-        // 1. RF12: Impedir cadastro duplicado por CNPJ
-        Optional<Corretora> existente = repository.findByCnpj(dto.getCnpj());
-        if (existente.isPresent()) {
-            throw new RuntimeException("CNPJ já cadastrado no sistema.");
+        BrasilApiResponse company = cnpjClient.buscarDadosPorCnpj(cnpj);
+        if (company == null || company.getRazaoSocial() == null || company.getRazaoSocial().isBlank()) {
+            throw new UpstreamInvalidResponseException("O serviço de CNPJ retornou dados incompletos.");
+        }
+        if (company.getCnaeFiscal() == null || !CNAES_VALIDOS.contains(company.getCnaeFiscal())) {
+            throw new BusinessException("VALIDATION_ERROR", "O CNPJ não pertence a uma instituição financeira aceita.");
         }
 
-        // 2. RF02 e RN01: Consultar CNPJ na API Externa
-        BrasilApiResponse dadosCnpj = cnpjClient.buscarDadosPorCnpj(dto.getCnpj());
-        if (dadosCnpj == null || dadosCnpj.getRazaoSocial() == null) {
-            throw new RuntimeException("CNPJ inválido ou não encontrado na base de dados.");
-        }
+        ViaCepResponse address = cepClient.buscarEnderecoPorCep(dto.getCep());
+        if (address == null) throw new UpstreamInvalidResponseException("O serviço de CEP retornou resposta vazia.");
+        if (Boolean.TRUE.equals(address.getErro())) throw new UpstreamNotFoundException("CEP não encontrado.");
 
-        // 3. RN02: Registrar os dados vindos da consulta (bloqueia preenchimento manual)
-        dto.setRazaoSocial(dadosCnpj.getRazaoSocial());
-        dto.setNomeFantasia(dadosCnpj.getNomeFantasia() != null ? dadosCnpj.getNomeFantasia() : dadosCnpj.getRazaoSocial());
-        dto.setSituacaoCadastral(dadosCnpj.getDescricaoSituacaoCadastral());
-
-        // 4. RN03 e RF03: Validação na "CVM" pelo CNAE
-        // 6612601: Corretoras de títulos e valores mobiliários (CTVM)
-        // 6612602: Distribuidoras de títulos e valores mobiliários (DTVM)
-        // 6431900: Bancos de investimento (BTG, Itaú BBA, etc)
-        java.util.List<Integer> cnaesValidos = java.util.Arrays.asList(6612601, 6612602, 6431900);
-
-        if (dadosCnpj.getCnaeFiscal() != null && cnaesValidos.contains(dadosCnpj.getCnaeFiscal())) {
-            dto.setValidadaNaCvm(true);
-        } else {
-            // Aborta o cadastro jogando um erro para a nossa caixinha vermelha do Angular pegar!
-            throw new RuntimeException("O CNPJ informado não pertence a uma instituição financeira ou corretora autorizada pela CVM.");
-        }
-
-        // 5. RF04 e RN04: Consultar e validar CEP
-        ViaCepResponse dadosCep = cepClient.buscarEnderecoPorCep(dto.getCep());
-        if (dadosCep == null || (dadosCep.getErro() != null && dadosCep.getErro())) {
-            throw new RuntimeException("CEP inválido ou inexistente.");
-        }
-
-        // Preenche o endereço com os dados oficiais do ViaCEP
-        dto.setLogradouro(dadosCep.getLogradouro());
-        dto.setBairro(dadosCep.getBairro());
-        dto.setCidade(dadosCep.getLocalidade());
-        dto.setUf(dadosCep.getUf());
-        // Obs: O número e o complemento o usuário já enviou no DTO original
-
-        // 6. Converter para Entidade, setar a data e salvar no banco
+        dto.setId(null);
+        dto.setCnpj(cnpj);
+        dto.setRazaoSocial(company.getRazaoSocial());
+        dto.setNomeFantasia(company.getNomeFantasia() == null || company.getNomeFantasia().isBlank() ? company.getRazaoSocial() : company.getNomeFantasia());
+        dto.setSituacaoCadastral(company.getDescricaoSituacaoCadastral());
+        dto.setValidadaNaCvm(true);
+        dto.setLogradouro(address.getLogradouro());
+        dto.setBairro(address.getBairro());
+        dto.setCidade(address.getLocalidade());
+        dto.setUf(address.getUf());
         Corretora entity = CorretoraMapper.toEntity(dto);
         entity.setDataCadastro(LocalDateTime.now());
-
-        entity = repository.save(entity);
-
-        // 7. Retornar os dados consolidados e salvos
-        return CorretoraMapper.toDTO(entity);
+        return CorretoraMapper.toDTO(repository.save(entity));
     }
 
-    // RF05: Listar corretoras cadastradas
-    public List<CorretoraDTO> findAll() {
-        return repository.findAll().stream()
-                .map(CorretoraMapper::toDTO)
-                .collect(Collectors.toList());
-    }
+    public List<CorretoraDTO> findAll() { return repository.findAll().stream().map(CorretoraMapper::toDTO).toList(); }
 
-    // RF06: Buscar corretora por ID
     public CorretoraDTO findById(Long id) {
-        Corretora entity = repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Corretora não encontrada com o ID: " + id));
-        return CorretoraMapper.toDTO(entity);
+        return CorretoraMapper.toDTO(repository.findById(id).orElseThrow(() -> new NotFoundException("Corretora não encontrada.")));
     }
 
-    // RF06: Buscar corretora por CNPJ
     public CorretoraDTO findByCnpj(String cnpj) {
-        Corretora entity = repository.findByCnpj(cnpj)
-                .orElseThrow(() -> new RuntimeException("Corretora não encontrada com o CNPJ: " + cnpj));
-        return CorretoraMapper.toDTO(entity);
+        String canonical = Identifiers.cnpjFromPath(cnpj);
+        return CorretoraMapper.toDTO(repository.findByCnpj(canonical).orElseThrow(() -> new NotFoundException("Corretora não encontrada.")));
     }
 }

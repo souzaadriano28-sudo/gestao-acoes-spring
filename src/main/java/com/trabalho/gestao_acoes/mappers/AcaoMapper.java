@@ -25,7 +25,6 @@ public class AcaoMapper {
             return null;
         }
         Acao entity = new Acao();
-        entity.setId(dto.getId());
         entity.setTicker(dto.getTicker());
         entity.setNomeEmpresa(dto.getNomeEmpresa());
         entity.setMercado(dto.getMercado());

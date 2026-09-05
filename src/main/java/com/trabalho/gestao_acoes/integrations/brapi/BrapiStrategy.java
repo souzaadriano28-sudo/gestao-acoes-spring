@@ -2,33 +2,42 @@ package com.trabalho.gestao_acoes.integrations.brapi;
 
 import com.trabalho.gestao_acoes.services.ports.CotacaoBolsa;
 import com.trabalho.gestao_acoes.services.ports.CotacaoStrategy;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.trabalho.gestao_acoes.services.exceptions.InvalidQuoteException;
+import feign.codec.DecodeException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class BrapiStrategy implements CotacaoStrategy {
 
-    @Autowired
-    private BrapiClient brapiClient;
+    private final BrapiClient brapiClient;
+    private final String token;
 
-    // Coloque um token gratuito gerado no site brapi.dev (ou deixe este de teste acadêmico se funcionar)
-    private final String TOKEN = "rLFSeWPu1T9XtEV4E2XbX3";
+    public BrapiStrategy(BrapiClient brapiClient, @Value("${api.brapi.token}") String token) {
+        if (token == null || token.isBlank()) throw new IllegalStateException("Configuração obrigatória ausente: api.brapi.token");
+        this.brapiClient = brapiClient;
+        this.token = token;
+    }
 
     @Override
     public CotacaoBolsa buscarCotacao(String ticker) {
-        BrapiResponse response = brapiClient.consultarCotacao(ticker, TOKEN);
+        BrapiResponse response;
+        try {
+            response = brapiClient.consultarCotacao(ticker, token);
+        } catch (DecodeException ex) {
+            throw new InvalidQuoteException("Resposta de cotação brasileira inválida.");
+        }
 
         if (response != null && response.getResults() != null && !response.getResults().isEmpty()) {
-            Double preco = response.getResults().get(0).getRegularMarketPrice();
+            java.math.BigDecimal preco = response.getResults().get(0).getRegularMarketPrice();
             String moeda = response.getResults().get(0).getCurrency();
-            return new CotacaoBolsa(preco, moeda != null ? moeda : "BRL");
+            return new CotacaoBolsa(preco, moeda);
         }
-        throw new RuntimeException("Cotação não encontrada na bolsa brasileira para o ticker: " + ticker);
+        throw new InvalidQuoteException("Resposta de cotação brasileira ausente ou vazia.");
     }
 
     @Override
     public boolean suportaMercado(String mercado) {
-        // Esta estratégia SÓ liga se o usuário digitar "NACIONAL" ou "BRASILEIRO"
-        return mercado != null && (mercado.equalsIgnoreCase("NACIONAL") || mercado.equalsIgnoreCase("BRASIL"));
+        return "BRASIL".equals(mercado);
     }
 }
