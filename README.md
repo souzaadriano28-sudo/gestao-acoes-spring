@@ -1,5 +1,7 @@
 # 📊 Sistema de Gestão de Ações
 
+> Configuração do runtime: [`docs/runtime-configuration.md`](docs/runtime-configuration.md). Migrações e adoção segura de PostgreSQL: [`docs/database-migrations.md`](docs/database-migrations.md).
+
 ![Java](https://img.shields.io/badge/Java-17-blue)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-green)
 
