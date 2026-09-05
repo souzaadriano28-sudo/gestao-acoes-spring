@@ -36,7 +36,9 @@ jobs:
           cache-dependency-path: pom.xml
 
       - name: Compile and test with Maven Wrapper
-        run: bash ./mvnw -B verify
+        run: |
+          bash ./mvnw -B verify
+          exit 1
 
       - name: Upload backend failure reports
         if: failure()
