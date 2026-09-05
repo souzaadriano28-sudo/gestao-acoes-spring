@@ -2,12 +2,15 @@ package com.trabalho.gestao_acoes.domains;
 
 import com.trabalho.gestao_acoes.domains.enums.TipoTransacao;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Check;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
 @Entity
 @Table(name = "transacao")
+@Check(constraints = "quantidade > 0 and preco_unitario > 0")
 public class Transacao implements Serializable {
     private static final long serialVersionUID = 1L;
 
@@ -22,8 +25,8 @@ public class Transacao implements Serializable {
     @Column(nullable = false)
     private Integer quantidade;
 
-    @Column(nullable = false)
-    private Double precoUnitario;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal precoUnitario;
 
     @Column(nullable = false)
     private LocalDateTime dataHora;
@@ -39,7 +42,7 @@ public class Transacao implements Serializable {
     public Transacao() {
     }
 
-    public Transacao(Long id, TipoTransacao tipo, Integer quantidade, Double precoUnitario, LocalDateTime dataHora, Acao acao, Corretora corretora) {
+    public Transacao(Long id, TipoTransacao tipo, Integer quantidade, BigDecimal precoUnitario, LocalDateTime dataHora, Acao acao, Corretora corretora) {
         this.id = id;
         this.tipo = tipo;
         this.quantidade = quantidade;
@@ -58,8 +61,8 @@ public class Transacao implements Serializable {
     public Integer getQuantidade() { return quantidade; }
     public void setQuantidade(Integer quantidade) { this.quantidade = quantidade; }
 
-    public Double getPrecoUnitario() { return precoUnitario; }
-    public void setPrecoUnitario(Double precoUnitario) { this.precoUnitario = precoUnitario; }
+    public BigDecimal getPrecoUnitario() { return precoUnitario; }
+    public void setPrecoUnitario(BigDecimal precoUnitario) { this.precoUnitario = precoUnitario; }
 
     public LocalDateTime getDataHora() { return dataHora; }
     public void setDataHora(LocalDateTime dataHora) { this.dataHora = dataHora; }

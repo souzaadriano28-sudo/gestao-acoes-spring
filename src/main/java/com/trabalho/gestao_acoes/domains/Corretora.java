@@ -14,7 +14,7 @@ public class Corretora implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 18)
+    @Column(nullable = false, unique = true, length = 14)
     private String cnpj;
 
     @Column(nullable = false)

@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface PosicaoCarteiraRepository extends JpaRepository<PosicaoCarteira, Long> {
     Optional<PosicaoCarteira> findByAcaoTickerAndCorretoraId(String ticker, Long corretoraId);
+    Optional<PosicaoCarteira> findByAcaoIdAndCorretoraId(Long acaoId, Long corretoraId);
 }

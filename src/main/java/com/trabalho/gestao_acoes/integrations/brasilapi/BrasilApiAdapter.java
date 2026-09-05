@@ -13,8 +13,6 @@ public class BrasilApiAdapter implements CnpjClientPort {
     @Override
     public BrasilApiResponse buscarDadosPorCnpj(String cnpj) {
 
-        String cnpjLimpo = cnpj.replaceAll("[^0-9]", "");
-
-        return brasilApiClient.consultarCnpj(cnpjLimpo);
+        return brasilApiClient.consultarCnpj(cnpj);
     }
 }

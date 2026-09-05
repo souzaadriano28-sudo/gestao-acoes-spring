@@ -1,11 +1,14 @@
 package com.trabalho.gestao_acoes.domains;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Check;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.Objects;
 
 @Entity
-@Table(name = "posicao_carteira")
+@Table(name = "posicao_carteira", uniqueConstraints = @UniqueConstraint(name = "uk_posicao_acao_corretora", columnNames = {"acao_id", "corretora_id"}))
+@Check(constraints = "quantidade_total > 0 and preco_medio > 0")
 public class PosicaoCarteira implements Serializable {
     private static final long serialVersionUID = 1L;
 
@@ -16,8 +19,8 @@ public class PosicaoCarteira implements Serializable {
     @Column(nullable = false)
     private Integer quantidadeTotal;
 
-    @Column(nullable = false)
-    private Double precoMedio;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal precoMedio;
 
     @ManyToOne
     @JoinColumn(name = "acao_id", nullable = false)
@@ -30,7 +33,7 @@ public class PosicaoCarteira implements Serializable {
     public PosicaoCarteira() {
     }
 
-    public PosicaoCarteira(Long id, Integer quantidadeTotal, Double precoMedio, Acao acao, Corretora corretora) {
+    public PosicaoCarteira(Long id, Integer quantidadeTotal, BigDecimal precoMedio, Acao acao, Corretora corretora) {
         this.id = id;
         this.quantidadeTotal = quantidadeTotal;
         this.precoMedio = precoMedio;
@@ -44,8 +47,8 @@ public class PosicaoCarteira implements Serializable {
     public Integer getQuantidadeTotal() { return quantidadeTotal; }
     public void setQuantidadeTotal(Integer quantidadeTotal) { this.quantidadeTotal = quantidadeTotal; }
 
-    public Double getPrecoMedio() { return precoMedio; }
-    public void setPrecoMedio(Double precoMedio) { this.precoMedio = precoMedio; }
+    public BigDecimal getPrecoMedio() { return precoMedio; }
+    public void setPrecoMedio(BigDecimal precoMedio) { this.precoMedio = precoMedio; }
 
     public Acao getAcao() { return acao; }
     public void setAcao(Acao acao) { this.acao = acao; }

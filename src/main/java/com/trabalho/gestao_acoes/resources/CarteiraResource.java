@@ -3,6 +3,7 @@ package com.trabalho.gestao_acoes.resources;
 import com.trabalho.gestao_acoes.domains.dtos.PosicaoDTO;
 import com.trabalho.gestao_acoes.domains.dtos.TransacaoRequestDTO;
 import com.trabalho.gestao_acoes.services.CarteiraService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,19 +20,19 @@ public class CarteiraResource {
     }
 
     @PostMapping("/comprar")
-    public ResponseEntity<Void> comprar(@RequestBody TransacaoRequestDTO dto) {
+    public ResponseEntity<Void> comprar(@Valid @RequestBody TransacaoRequestDTO dto) {
         service.comprar(dto.getTicker(), dto.getMercado(), dto.getQtd(), dto.getCorretoraId());
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/vender")
-    public ResponseEntity<Void> vender(@RequestBody TransacaoRequestDTO dto) {
+    public ResponseEntity<Void> vender(@Valid @RequestBody TransacaoRequestDTO dto) {
         service.vender(dto.getTicker(), dto.getMercado(), dto.getQtd(), dto.getCorretoraId());
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/saldo-total")
-    public ResponseEntity<Double> getSaldoTotal() {
+    public ResponseEntity<java.math.BigDecimal> getSaldoTotal() {
         return ResponseEntity.ok(service.calcularSaldoTotal());
     }
 

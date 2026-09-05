@@ -1,7 +1,7 @@
 package com.trabalho.gestao_acoes.domains.dtos;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Null;
 import jakarta.validation.constraints.Size;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -9,10 +9,10 @@ import java.time.LocalDateTime;
 public class CorretoraDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
+    @Null(message = "O ID não deve ser informado no cadastro")
     private Long id;
 
     @NotBlank(message = "O CNPJ é obrigatório")
-    @Size(min = 14, max = 18, message = "O CNPJ deve ter entre 14 e 18 caracteres")
     private String cnpj;
 
     private String razaoSocial;

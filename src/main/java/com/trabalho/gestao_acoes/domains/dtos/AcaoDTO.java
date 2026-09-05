@@ -1,13 +1,15 @@
 package com.trabalho.gestao_acoes.domains.dtos;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Null;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class AcaoDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
+    @Null(message = "O ID não deve ser informado no cadastro")
     private Long id;
 
     @NotBlank(message = "O Ticker é obrigatório")
@@ -19,7 +21,7 @@ public class AcaoDTO implements Serializable {
     private String mercado;
 
     private String moeda;
-    private Double cotacaoAtual;
+    private BigDecimal cotacaoAtual;
     private LocalDateTime dataHoraCotacao;
 
     public AcaoDTO() {
@@ -40,8 +42,8 @@ public class AcaoDTO implements Serializable {
     public String getMoeda() { return moeda; }
     public void setMoeda(String moeda) { this.moeda = moeda; }
 
-    public Double getCotacaoAtual() { return cotacaoAtual; }
-    public void setCotacaoAtual(Double cotacaoAtual) { this.cotacaoAtual = cotacaoAtual; }
+    public BigDecimal getCotacaoAtual() { return cotacaoAtual; }
+    public void setCotacaoAtual(BigDecimal cotacaoAtual) { this.cotacaoAtual = cotacaoAtual; }
 
     public LocalDateTime getDataHoraCotacao() { return dataHoraCotacao; }
     public void setDataHoraCotacao(LocalDateTime dataHoraCotacao) { this.dataHoraCotacao = dataHoraCotacao; }

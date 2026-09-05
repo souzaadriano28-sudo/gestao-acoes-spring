@@ -34,7 +34,6 @@ public class CorretoraMapper {
             return null;
         }
         Corretora entity = new Corretora();
-        entity.setId(dto.getId());
         entity.setCnpj(dto.getCnpj());
         entity.setRazaoSocial(dto.getRazaoSocial());
         entity.setNomeFantasia(dto.getNomeFantasia());

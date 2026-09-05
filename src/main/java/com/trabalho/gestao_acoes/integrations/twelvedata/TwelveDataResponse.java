@@ -1,8 +1,10 @@
 package com.trabalho.gestao_acoes.integrations.twelvedata;
 
-public class TwelveDataResponse {
-    private Double price;
+import java.math.BigDecimal;
 
-    public Double getPrice() { return price; }
-    public void setPrice(Double price) { this.price = price; }
+public class TwelveDataResponse {
+    private BigDecimal price;
+
+    public BigDecimal getPrice() { return price; }
+    public void setPrice(BigDecimal price) { this.price = price; }
 }

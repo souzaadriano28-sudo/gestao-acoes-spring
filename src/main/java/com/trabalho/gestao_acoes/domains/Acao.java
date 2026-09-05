@@ -2,6 +2,7 @@ package com.trabalho.gestao_acoes.domains;
 
 import jakarta.persistence.*;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
@@ -25,8 +26,8 @@ public class Acao implements Serializable {
     @Column(nullable = false, length = 10)
     private String moeda; // Ex: "BRL" ou "USD"
 
-    @Column(nullable = false)
-    private Double cotacaoAtual;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal cotacaoAtual;
 
     @Column(nullable = false)
     private LocalDateTime dataHoraCotacao;
@@ -34,7 +35,7 @@ public class Acao implements Serializable {
     public Acao() {
     }
 
-    public Acao(Long id, String ticker, String nomeEmpresa, String mercado, String moeda, Double cotacaoAtual, LocalDateTime dataHoraCotacao) {
+    public Acao(Long id, String ticker, String nomeEmpresa, String mercado, String moeda, BigDecimal cotacaoAtual, LocalDateTime dataHoraCotacao) {
         this.id = id;
         this.ticker = ticker;
         this.nomeEmpresa = nomeEmpresa;
@@ -59,8 +60,8 @@ public class Acao implements Serializable {
     public String getMoeda() { return moeda; }
     public void setMoeda(String moeda) { this.moeda = moeda; }
 
-    public Double getCotacaoAtual() { return cotacaoAtual; }
-    public void setCotacaoAtual(Double cotacaoAtual) { this.cotacaoAtual = cotacaoAtual; }
+    public BigDecimal getCotacaoAtual() { return cotacaoAtual; }
+    public void setCotacaoAtual(BigDecimal cotacaoAtual) { this.cotacaoAtual = cotacaoAtual; }
 
     public LocalDateTime getDataHoraCotacao() { return dataHoraCotacao; }
     public void setDataHoraCotacao(LocalDateTime dataHoraCotacao) { this.dataHoraCotacao = dataHoraCotacao; }
