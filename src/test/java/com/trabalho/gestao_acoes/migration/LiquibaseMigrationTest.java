@@ -22,15 +22,16 @@ class LiquibaseMigrationTest {
     void emptyDatabaseMigratesOnceAndReleasesTheLock() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(3);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(4);
             assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOGLOCK WHERE LOCKED = FALSE")).isEqualTo(1);
             assertThat(fixture.tableExists("ACAO")).isTrue();
             assertThat(fixture.tableExists("CORRETORA")).isTrue();
             assertThat(fixture.tableExists("TRANSACAO")).isTrue();
             assertThat(fixture.tableExists("POSICAO_CARTEIRA")).isTrue();
+            assertThat(fixture.tableExists("ADMIN_USER")).isTrue();
 
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(3);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(4);
         }
     }
 
@@ -42,7 +43,7 @@ class LiquibaseMigrationTest {
             assertThatThrownBy(fixture.liquibase::validate)
                     .isInstanceOf(CommandExecutionException.class)
                     .hasCauseInstanceOf(ValidationFailedException.class);
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(3);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(4);
         }
     }
 
@@ -50,10 +51,11 @@ class LiquibaseMigrationTest {
     void disposableInitialSchemaRollsBackAndCanBeAppliedAgain() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.liquibase.update();
-            fixture.liquibase.rollback(3, "");
+            fixture.liquibase.rollback(4, "");
             assertThat(fixture.tableExists("ACAO")).isFalse();
+            assertThat(fixture.tableExists("ADMIN_USER")).isFalse();
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(3);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(4);
         }
     }
 

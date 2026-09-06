@@ -22,7 +22,9 @@ class RequiredRuntimePropertiesBindingTest {
         runner.withPropertyValues(
                 "app.required.db-password= ",
                 "app.required.brapi-token=fake-but-nonblank",
-                "app.required.twelvedata-api-key=fake-but-nonblank")
+                "app.required.twelvedata-api-key=fake-but-nonblank",
+                "app.required.admin-initial-username=atlas-admin",
+                "app.required.admin-initial-password=fake-admin-password")
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(rootCause(context.getStartupFailure()).getMessage())
@@ -36,7 +38,9 @@ class RequiredRuntimePropertiesBindingTest {
         runner.withPropertyValues(
                 "app.required.db-password=fake-db",
                 "app.required.brapi-token=fake-brapi",
-                "app.required.twelvedata-api-key=fake-twelve")
+                "app.required.twelvedata-api-key=fake-twelve",
+                "app.required.admin-initial-username=atlas-admin",
+                "app.required.admin-initial-password=fake-admin-password")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(RequiredRuntimeProperties.class);
