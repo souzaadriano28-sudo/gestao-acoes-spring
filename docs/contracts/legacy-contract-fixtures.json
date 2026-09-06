@@ -1,0 +1,9 @@
+{
+  "asset": { "id": 1, "ticker": "PETR4", "nomeEmpresa": "Petrobras", "mercado": "BRASIL", "moeda": "BRL", "cotacaoAtual": 20.00000000, "dataHoraCotacao": "2026-09-06T12:00:00" },
+  "broker": { "id": 7, "cnpj": "11222333000181", "razaoSocial": "Corretora Teste", "cep": "01001000", "validadaNaCvm": false, "dataCadastro": "2026-09-06T12:00:00" },
+  "position": { "ticker": "PETR4", "corretora": "Corretora Teste", "quantidade": 2, "precoMedio": 18.10000000, "moeda": "BRL" },
+  "balance": 40.00,
+  "buyRequest": { "ticker": "PETR4", "mercado": "BRASIL", "qtd": 2, "corretoraId": 7 },
+  "sellRequest": { "ticker": "PETR4", "mercado": "BRASIL", "qtd": 1, "corretoraId": 7 },
+  "mutationSuccessBody": null
+}

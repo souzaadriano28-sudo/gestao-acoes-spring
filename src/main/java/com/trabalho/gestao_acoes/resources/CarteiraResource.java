@@ -38,12 +38,18 @@ public class CarteiraResource {
 
     @GetMapping("/saldo-total")
     public ResponseEntity<java.math.BigDecimal> getSaldoTotal() {
-        return ResponseEntity.ok(service.calcularSaldoTotal());
+        return ResponseEntity.ok()
+                .header("Deprecation", "true")
+                .header("Link", "</carteira/dashboard>; rel=\"successor-version\"")
+                .body(service.calcularSaldoTotal());
     }
 
     @GetMapping("/posicoes")
     public ResponseEntity<List<PosicaoDTO>> listarPosicoes() {
-        return ResponseEntity.ok(service.listarPosicoes());
+        return ResponseEntity.ok()
+                .header("Deprecation", "true")
+                .header("Link", "</carteira/posicoes/detalhadas>; rel=\"successor-version\"")
+                .body(service.listarPosicoes());
     }
 
     @GetMapping("/dashboard")

@@ -3,6 +3,8 @@ package com.trabalho.gestao_acoes.domains;
 import jakarta.persistence.*;
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.time.Instant;
+import com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus;
 import java.util.Objects;
 
 @Entity
@@ -43,6 +45,15 @@ public class Corretora implements Serializable {
     private Boolean validadaNaCvm;
 
     private LocalDateTime dataCadastro;
+
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
+    private RegulatoryStatus regulatoryStatus = RegulatoryStatus.NOT_CHECKED;
+    @Column(length = 120) private String regulatoryCategory;
+    @Column(length = 160) private String regulatorySource;
+    @Column(length = 80) private String regulatoryEvidenceId;
+    private Instant regulatoryReferenceAt;
+    private Instant regulatoryCheckedAt;
+    @Column(length = 120) private String regulatoryReason;
 
     public Corretora() {
     }
@@ -113,6 +124,20 @@ public class Corretora implements Serializable {
 
     public LocalDateTime getDataCadastro() { return dataCadastro; }
     public void setDataCadastro(LocalDateTime dataCadastro) { this.dataCadastro = dataCadastro; }
+    public RegulatoryStatus getRegulatoryStatus() { return regulatoryStatus; }
+    public void setRegulatoryStatus(RegulatoryStatus value) { this.regulatoryStatus = value; }
+    public String getRegulatoryCategory() { return regulatoryCategory; }
+    public void setRegulatoryCategory(String value) { this.regulatoryCategory = value; }
+    public String getRegulatorySource() { return regulatorySource; }
+    public void setRegulatorySource(String value) { this.regulatorySource = value; }
+    public String getRegulatoryEvidenceId() { return regulatoryEvidenceId; }
+    public void setRegulatoryEvidenceId(String value) { this.regulatoryEvidenceId = value; }
+    public Instant getRegulatoryReferenceAt() { return regulatoryReferenceAt; }
+    public void setRegulatoryReferenceAt(Instant value) { this.regulatoryReferenceAt = value; }
+    public Instant getRegulatoryCheckedAt() { return regulatoryCheckedAt; }
+    public void setRegulatoryCheckedAt(Instant value) { this.regulatoryCheckedAt = value; }
+    public String getRegulatoryReason() { return regulatoryReason; }
+    public void setRegulatoryReason(String value) { this.regulatoryReason = value; }
 
     @Override
     public boolean equals(Object o) {

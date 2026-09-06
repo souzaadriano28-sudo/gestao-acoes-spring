@@ -48,6 +48,8 @@ class AuthSecurityIntegrationTest {
         }
         mvc.perform(post("/carteira/comprar").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+        mvc.perform(post("/corretoras/evidencia-regulatoria/atualizar"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
         mvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 

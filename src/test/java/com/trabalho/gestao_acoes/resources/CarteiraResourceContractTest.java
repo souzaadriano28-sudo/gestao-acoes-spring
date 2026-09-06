@@ -20,12 +20,15 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 class CarteiraResourceContractTest {
     private CarteiraService service;
@@ -134,6 +137,35 @@ class CarteiraResourceContractTest {
                 .andExpect(status().isOk()).andExpect(content().string(""));
         mvc.perform(post("/carteira/vender").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk()).andExpect(content().string(""));
+    }
+
+    @Test
+    void legacyReadsKeepPayloadAndAdvertiseSuccessorsWithoutPrematureSunset() throws Exception {
+        when(service.calcularSaldoTotal()).thenReturn(new BigDecimal("123.45"));
+        when(service.listarPosicoes()).thenReturn(List.of());
+
+        mvc.perform(get("/carteira/saldo-total"))
+                .andExpect(status().isOk()).andExpect(content().string("123.45"))
+                .andExpect(header().string("Deprecation", "true"))
+                .andExpect(header().string("Link", "</carteira/dashboard>; rel=\"successor-version\""))
+                .andExpect(header().doesNotExist("Sunset"));
+        mvc.perform(get("/carteira/posicoes"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isArray())
+                .andExpect(header().string("Deprecation", "true"))
+                .andExpect(header().string("Link", "</carteira/posicoes/detalhadas>; rel=\"successor-version\""))
+                .andExpect(header().doesNotExist("Sunset"));
+    }
+
+    @Test
+    void versionedContractAndLegacyFixturesAreValidJsonAndCoverPublicOperations() throws Exception {
+        var schema = new ObjectMapper().readTree(Files.readAllBytes(Path.of("docs/contracts/portfolio-read-model.schema.json")));
+        var fixtures = new ObjectMapper().readTree(Files.readAllBytes(Path.of("docs/contracts/legacy-contract-fixtures.json")));
+        assertThat(schema.path("$schema").asText()).contains("2020-12");
+        assertThat(schema.path("$defs").has("dashboard")).isTrue();
+        assertThat(schema.path("$defs").has("movement")).isTrue();
+        assertThat(fixtures.has("balance")).isTrue();
+        assertThat(fixtures.has("buyRequest")).isTrue();
+        assertThat(fixtures.has("sellRequest")).isTrue();
     }
 
     @Test

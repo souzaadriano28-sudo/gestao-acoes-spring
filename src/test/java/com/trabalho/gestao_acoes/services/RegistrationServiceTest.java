@@ -52,6 +52,10 @@ class RegistrationServiceTest {
 
         assertThat(result.getCnpj()).isEqualTo("11222333000181");
         assertThat(result.getRazaoSocial()).isEqualTo("Corretora Teste");
+        assertThat(result.getValidadaNaCvm()).isFalse();
+        assertThat(result.getBusinessRegistration().source()).isEqualTo("BRASIL_API");
+        assertThat(result.getRegulatoryEvidence().status())
+                .isEqualTo(com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus.NOT_CHECKED);
         verify(companyClient).buscarDadosPorCnpj("11222333000181");
         verify(addressClient).buscarEnderecoPorCep("01001000");
     }

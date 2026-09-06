@@ -7,8 +7,10 @@ import java.time.Instant;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Component
+@ConditionalOnProperty(name = "app.portfolio.exchange.mode", havingValue = "configured")
 public class ConfiguredExchangeRateAdapter implements ExchangeRatePort {
     private final Optional<ExchangeRate> usdBrl;
 

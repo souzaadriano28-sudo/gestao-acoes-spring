@@ -22,7 +22,7 @@ class LiquibaseMigrationTest {
     void emptyDatabaseMigratesOnceAndReleasesTheLock() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(6);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
             assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOGLOCK WHERE LOCKED = FALSE")).isEqualTo(1);
             assertThat(fixture.tableExists("ACAO")).isTrue();
             assertThat(fixture.tableExists("CORRETORA")).isTrue();
@@ -31,9 +31,12 @@ class LiquibaseMigrationTest {
             assertThat(fixture.tableExists("ADMIN_USER")).isTrue();
             assertThat(fixture.columnExists("ACAO", "QUOTE_PROVIDER")).isTrue();
             assertThat(fixture.indexExists("TRANSACAO", "IDX_TRANSACAO_DATA_ID")).isTrue();
+            assertThat(fixture.tableExists("EXCHANGE_RATE_SNAPSHOT")).isTrue();
+            assertThat(fixture.columnExists("CORRETORA", "REGULATORY_STATUS")).isTrue();
+            assertThat(fixture.indexExists("TRANSACAO", "IDX_TRANSACAO_TIPO_DATA_ID")).isTrue();
 
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(6);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
         }
     }
 
@@ -45,7 +48,7 @@ class LiquibaseMigrationTest {
             assertThatThrownBy(fixture.liquibase::validate)
                     .isInstanceOf(CommandExecutionException.class)
                     .hasCauseInstanceOf(ValidationFailedException.class);
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(6);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
         }
     }
 
@@ -53,11 +56,27 @@ class LiquibaseMigrationTest {
     void disposableInitialSchemaRollsBackAndCanBeAppliedAgain() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.liquibase.update();
-            fixture.liquibase.rollback(6, "");
+            fixture.liquibase.rollback(9, "");
             assertThat(fixture.tableExists("ACAO")).isFalse();
             assertThat(fixture.tableExists("ADMIN_USER")).isFalse();
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(6);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
+        }
+    }
+
+    @Test
+    void existingDatabaseUpgradesWithoutReclassifyingLegacyData() throws Exception {
+        try (Fixture fixture = fixture()) {
+            fixture.liquibase.update(6, "");
+            fixture.execute("INSERT INTO corretora (razao_social, cep, cnpj, validada_na_cvm) VALUES ('Legada', '01001000', '12345678000199', TRUE)");
+
+            fixture.liquibase.update();
+
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
+            assertThat(fixture.text("SELECT regulatory_status FROM corretora WHERE cnpj = '12345678000199'"))
+                    .isEqualTo("NOT_CHECKED");
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM corretora WHERE validada_na_cvm = TRUE")).isEqualTo(1);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM exchange_rate_snapshot")).isZero();
         }
     }
 
@@ -85,6 +104,13 @@ class LiquibaseMigrationTest {
         boolean tableExists(String table) throws Exception {
             try (var result = connection.getMetaData().getTables(null, null, table, new String[]{"TABLE"})) {
                 return result.next();
+            }
+        }
+
+        String text(String sql) throws Exception {
+            try (var statement = connection.createStatement(); var result = statement.executeQuery(sql)) {
+                result.next();
+                return result.getString(1);
             }
         }
 
