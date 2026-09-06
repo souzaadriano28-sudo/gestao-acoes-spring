@@ -114,7 +114,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
                 result.next();
-                assertThat(result.getLong(1)).isEqualTo(3);
+                assertThat(result.getLong(1)).isEqualTo(4);
             }
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangeloglock WHERE locked = false")) {
                 result.next();
@@ -125,7 +125,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
              var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
             result.next();
-            assertThat(result.getLong(1)).isEqualTo(3);
+            assertThat(result.getLong(1)).isEqualTo(4);
         }
     }
 
