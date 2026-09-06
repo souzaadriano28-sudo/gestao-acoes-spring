@@ -42,7 +42,9 @@ TWELVEDATA_API_KEY='<obter-do-cofre-local>' \
 ./mvnw spring-boot:run
 ```
 
-Na IDE, configure as mesmas variáveis na configuração de execução e impeça o compartilhamento desse conteúdo. O futuro Compose poderá usar interpolação de ambiente, mas isso pertence à fase 3 e não está implementado.
+Na IDE, configure as mesmas variáveis na configuração de execução e impeça o compartilhamento desse conteúdo. O Compose de três serviços está na raiz irmã `gestao-acoes/compose.yaml`; ele usa interpolação do shell ou de um `.env` local ignorado. Valide com `docker compose config --quiet`, pois a saída completa renderizada pode conter os segredos.
+
+No runtime containerizado, PostgreSQL e backend permanecem apenas na rede interna por padrão; o frontend é publicado em loopback e encaminha `/api` ao backend. O override `compose.diagnostics.yaml` da raiz publica backend e PostgreSQL em loopback somente quando diagnóstico explícito exigir acesso direto.
 
 ## Responsabilidade operacional
 
