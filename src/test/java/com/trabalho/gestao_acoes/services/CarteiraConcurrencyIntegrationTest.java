@@ -52,7 +52,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 @SpringBootTest(properties = {
         "spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
+        "spring.jpa.hibernate.ddl-auto=validate"
 })
 @Import(CarteiraConcurrencyIntegrationTest.PostgresTestConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -83,6 +83,7 @@ class CarteiraConcurrencyIntegrationTest {
     @Autowired private TransacaoRepository transactions;
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private DataSource dataSource;
+    @Autowired private liquibase.integration.spring.SpringLiquibase liquibase;
 
     private ExecutorService executor;
     private Acao asset;
@@ -105,6 +106,27 @@ class CarteiraConcurrencyIntegrationTest {
     void tearDown() throws InterruptedException {
         executor.shutdownNow();
         executor.awaitTermination(2, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @Timeout(10)
+    void aLiquibaseCreatesPostgreSqlSchemaOnceAndReleasesMigrationLock() throws Exception {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
+                result.next();
+                assertThat(result.getLong(1)).isEqualTo(3);
+            }
+            try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangeloglock WHERE locked = false")) {
+                result.next();
+                assertThat(result.getLong(1)).isEqualTo(1);
+            }
+        }
+        liquibase.afterPropertiesSet();
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
+             var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
+            result.next();
+            assertThat(result.getLong(1)).isEqualTo(3);
+        }
     }
 
     @Test
@@ -323,7 +345,7 @@ class CarteiraConcurrencyIntegrationTest {
     void zVersionedMigrationBlocksCanonicalCollisionsAndPreservesValidIds() throws Exception {
         Acao collision = assets.save(new Acao(null, " petr4 ", "Duplicada", "NACIONAL", "BRL",
                 new BigDecimal("20.00000000"), LocalDateTime.now()));
-        String preflight = Files.readString(Path.of("db/stabilization/V001__preflight.sql"), StandardCharsets.UTF_8);
+        String preflight = Files.readString(Path.of("db/adoption/preflight-existing-postgresql.sql"), StandardCharsets.UTF_8);
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> executeSql(statement, preflight))
                     .isInstanceOf(java.sql.SQLException.class);
@@ -332,10 +354,18 @@ class CarteiraConcurrencyIntegrationTest {
         assertThat(assets.findById(collision.getId())).isPresent();
 
         assets.delete(collision);
-        String migration = Files.readString(Path.of("db/stabilization/V002__normalize_and_constrain.sql"), StandardCharsets.UTF_8);
+        String migration = Files.readString(Path.of("db/adoption/normalize-existing-postgresql.sql"), StandardCharsets.UTF_8);
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             executeSql(statement, preflight);
             executeSql(statement, migration);
+            String equivalence = Files.readString(Path.of("db/adoption/verify-schema-equivalence.sql"), StandardCharsets.UTF_8);
+            executeSql(statement, equivalence);
+            statement.execute("ALTER TABLE acao ALTER COLUMN ticker TYPE varchar(11)");
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> executeSql(statement, equivalence))
+                    .isInstanceOf(java.sql.SQLException.class)
+                    .hasMessageContaining("schema equivalence");
+            statement.execute("ALTER TABLE acao ALTER COLUMN ticker TYPE varchar(10)");
+            executeSql(statement, equivalence);
         }
         assertThat(assets.findById(asset.getId()).orElseThrow().getTicker()).isEqualTo("PETR4");
         assertThat(brokers.findById(broker.getId()).orElseThrow().getCnpj()).isEqualTo("11222333000181");

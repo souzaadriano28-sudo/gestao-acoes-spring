@@ -1,4 +1,4 @@
--- Run with ON_ERROR_STOP=1. This script makes no persistent changes.
+-- Existing PostgreSQL adoption only. Run with ON_ERROR_STOP=1. No persistent changes.
 CREATE OR REPLACE FUNCTION pg_temp.valid_cnpj(input_value text) RETURNS boolean
 AS $function$
 WITH normalized AS (

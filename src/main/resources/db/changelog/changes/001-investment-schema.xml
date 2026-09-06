@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="001-create-investment-tables" author="gestao-acoes">
+        <createTable tableName="acao">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true" primaryKeyName="pk_acao" nullable="false"/></column>
+            <column name="ticker" type="VARCHAR(10)"><constraints nullable="false"/></column>
+            <column name="nome_empresa" type="VARCHAR(255)"/>
+            <column name="mercado" type="VARCHAR(50)"><constraints nullable="false"/></column>
+            <column name="moeda" type="VARCHAR(10)"><constraints nullable="false"/></column>
+            <column name="cotacao_atual" type="DECIMAL(19,8)"><constraints nullable="false"/></column>
+            <column name="data_hora_cotacao" type="TIMESTAMP(6)"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="corretora">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true" primaryKeyName="pk_corretora" nullable="false"/></column>
+            <column name="cnpj" type="VARCHAR(14)"><constraints nullable="false"/></column>
+            <column name="razao_social" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="nome_fantasia" type="VARCHAR(255)"/>
+            <column name="email" type="VARCHAR(255)"/>
+            <column name="telefone" type="VARCHAR(255)"/>
+            <column name="cep" type="VARCHAR(9)"><constraints nullable="false"/></column>
+            <column name="logradouro" type="VARCHAR(255)"/>
+            <column name="numero" type="VARCHAR(255)"/>
+            <column name="complemento" type="VARCHAR(255)"/>
+            <column name="bairro" type="VARCHAR(255)"/>
+            <column name="cidade" type="VARCHAR(255)"/>
+            <column name="uf" type="VARCHAR(2)"/>
+            <column name="situacao_cadastral" type="VARCHAR(255)"/>
+            <column name="validada_na_cvm" type="BOOLEAN"/>
+            <column name="data_cadastro" type="TIMESTAMP(6)"/>
+        </createTable>
+        <createTable tableName="transacao">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true" primaryKeyName="pk_transacao" nullable="false"/></column>
+            <column name="tipo" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="quantidade" type="INTEGER"><constraints nullable="false"/></column>
+            <column name="preco_unitario" type="DECIMAL(19,8)"><constraints nullable="false"/></column>
+            <column name="data_hora" type="TIMESTAMP(6)"><constraints nullable="false"/></column>
+            <column name="acao_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="corretora_id" type="BIGINT"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="posicao_carteira">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true" primaryKeyName="pk_posicao_carteira" nullable="false"/></column>
+            <column name="quantidade_total" type="INTEGER"><constraints nullable="false"/></column>
+            <column name="preco_medio" type="DECIMAL(19,8)"><constraints nullable="false"/></column>
+            <column name="acao_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="corretora_id" type="BIGINT"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="acao" columnNames="ticker" constraintName="uk_acao_ticker"/>
+        <addUniqueConstraint tableName="corretora" columnNames="cnpj" constraintName="uk_corretora_cnpj"/>
+        <addUniqueConstraint tableName="posicao_carteira" columnNames="acao_id, corretora_id" constraintName="uk_posicao_acao_corretora"/>
+        <rollback>
+            <dropTable tableName="posicao_carteira"/>
+            <dropTable tableName="transacao"/>
+            <dropTable tableName="corretora"/>
+            <dropTable tableName="acao"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="002-add-investment-relationships" author="gestao-acoes">
+        <addForeignKeyConstraint baseTableName="transacao" baseColumnNames="acao_id" referencedTableName="acao" referencedColumnNames="id" constraintName="fk_transacao_acao"/>
+        <addForeignKeyConstraint baseTableName="transacao" baseColumnNames="corretora_id" referencedTableName="corretora" referencedColumnNames="id" constraintName="fk_transacao_corretora"/>
+        <addForeignKeyConstraint baseTableName="posicao_carteira" baseColumnNames="acao_id" referencedTableName="acao" referencedColumnNames="id" constraintName="fk_posicao_acao"/>
+        <addForeignKeyConstraint baseTableName="posicao_carteira" baseColumnNames="corretora_id" referencedTableName="corretora" referencedColumnNames="id" constraintName="fk_posicao_corretora"/>
+        <rollback>
+            <dropForeignKeyConstraint baseTableName="posicao_carteira" constraintName="fk_posicao_corretora"/>
+            <dropForeignKeyConstraint baseTableName="posicao_carteira" constraintName="fk_posicao_acao"/>
+            <dropForeignKeyConstraint baseTableName="transacao" constraintName="fk_transacao_corretora"/>
+            <dropForeignKeyConstraint baseTableName="transacao" constraintName="fk_transacao_acao"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="003-add-investment-checks" author="gestao-acoes">
+        <sql>ALTER TABLE transacao ADD CONSTRAINT ck_transacao_valores_positivos CHECK (quantidade &gt; 0 AND preco_unitario &gt; 0)</sql>
+        <sql>ALTER TABLE transacao ADD CONSTRAINT ck_transacao_tipo CHECK (tipo IN ('COMPRA', 'VENDA'))</sql>
+        <sql>ALTER TABLE posicao_carteira ADD CONSTRAINT ck_posicao_valores_positivos CHECK (quantidade_total &gt; 0 AND preco_medio &gt; 0)</sql>
+        <rollback>
+            <sql>ALTER TABLE posicao_carteira DROP CONSTRAINT ck_posicao_valores_positivos</sql>
+            <sql>ALTER TABLE transacao DROP CONSTRAINT ck_transacao_tipo</sql>
+            <sql>ALTER TABLE transacao DROP CONSTRAINT ck_transacao_valores_positivos</sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
