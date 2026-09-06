@@ -29,7 +29,7 @@ public class TwelveDataStrategy implements CotacaoStrategy {
         }
 
         if (response != null && response.getPrice() != null) {
-            return new CotacaoBolsa(response.getPrice(), "USD");
+            return new CotacaoBolsa(response.getPrice(), "USD", "MARKET_DATA_PROVIDER", "TWELVE_DATA", null, null, null);
         }
         throw new InvalidQuoteException("Resposta de cotação americana ausente ou vazia.");
     }

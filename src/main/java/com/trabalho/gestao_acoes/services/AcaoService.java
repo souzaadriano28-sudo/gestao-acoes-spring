@@ -41,7 +41,9 @@ public class AcaoService {
         dto.setCotacaoAtual(quote.getPrecoAtual());
         dto.setMoeda(quote.getMoeda());
         dto.setDataHoraCotacao(LocalDateTime.now());
-        return AcaoMapper.toDTO(repository.save(AcaoMapper.toEntity(dto)));
+        Acao entity = AcaoMapper.toEntity(dto);
+        applyProvenance(entity, quote);
+        return AcaoMapper.toDTO(repository.save(entity));
     }
 
     public List<AcaoDTO> findAll() { return repository.findAll().stream().map(AcaoMapper::toDTO).toList(); }
@@ -61,6 +63,15 @@ public class AcaoService {
         CotacaoBolsa quote = cotacaoService.buscar(entity.getTicker(), entity.getMercado());
         entity.setCotacaoAtual(quote.getPrecoAtual());
         entity.setDataHoraCotacao(LocalDateTime.now());
+        applyProvenance(entity, quote);
         return AcaoMapper.toDTO(repository.save(entity));
+    }
+
+    private static void applyProvenance(Acao entity, CotacaoBolsa quote) {
+        entity.setQuoteSourceType(quote.getSourceType());
+        entity.setQuoteProvider(quote.getProvider());
+        entity.setQuoteReferenceAt(quote.getReferenceAt());
+        entity.setQuoteFetchedAt(quote.getFetchedAt());
+        entity.setQuoteReferenceKind(quote.getReferenceKind());
     }
 }

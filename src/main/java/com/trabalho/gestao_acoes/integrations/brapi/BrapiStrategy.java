@@ -31,7 +31,7 @@ public class BrapiStrategy implements CotacaoStrategy {
         if (response != null && response.getResults() != null && !response.getResults().isEmpty()) {
             java.math.BigDecimal preco = response.getResults().get(0).getRegularMarketPrice();
             String moeda = response.getResults().get(0).getCurrency();
-            return new CotacaoBolsa(preco, moeda);
+            return new CotacaoBolsa(preco, moeda, "MARKET_DATA_PROVIDER", "BRAPI", null, null, null);
         }
         throw new InvalidQuoteException("Resposta de cotação brasileira ausente ou vazia.");
     }

@@ -12,6 +12,11 @@ BEGIN
       ('acao','nome_empresa','character varying','YES',255,NULL,NULL), ('acao','mercado','character varying','NO',50,NULL,NULL),
       ('acao','moeda','character varying','NO',10,NULL,NULL), ('acao','cotacao_atual','numeric','NO',NULL,19,8),
       ('acao','data_hora_cotacao','timestamp without time zone','NO',NULL,NULL,NULL),
+      ('acao','quote_source_type','character varying','YES',40,NULL,NULL),
+      ('acao','quote_provider','character varying','YES',80,NULL,NULL),
+      ('acao','quote_reference_at','timestamp with time zone','YES',NULL,NULL,NULL),
+      ('acao','quote_fetched_at','timestamp with time zone','YES',NULL,NULL,NULL),
+      ('acao','quote_reference_kind','character varying','YES',40,NULL,NULL),
       ('corretora','id','bigint','NO',NULL,NULL,NULL), ('corretora','cnpj','character varying','NO',14,NULL,NULL),
       ('corretora','razao_social','character varying','NO',255,NULL,NULL), ('corretora','nome_fantasia','character varying','YES',255,NULL,NULL),
       ('corretora','email','character varying','YES',255,NULL,NULL), ('corretora','telefone','character varying','YES',255,NULL,NULL),
@@ -44,6 +49,7 @@ BEGIN
 
   WITH expected(table_name, column_name) AS (VALUES
     ('acao','id'),('acao','ticker'),('acao','nome_empresa'),('acao','mercado'),('acao','moeda'),('acao','cotacao_atual'),('acao','data_hora_cotacao'),
+    ('acao','quote_source_type'),('acao','quote_provider'),('acao','quote_reference_at'),('acao','quote_fetched_at'),('acao','quote_reference_kind'),
     ('corretora','id'),('corretora','cnpj'),('corretora','razao_social'),('corretora','nome_fantasia'),('corretora','email'),('corretora','telefone'),('corretora','cep'),('corretora','logradouro'),('corretora','numero'),('corretora','complemento'),('corretora','bairro'),('corretora','cidade'),('corretora','uf'),('corretora','situacao_cadastral'),('corretora','validada_na_cvm'),('corretora','data_cadastro'),
     ('transacao','id'),('transacao','tipo'),('transacao','quantidade'),('transacao','preco_unitario'),('transacao','data_hora'),('transacao','acao_id'),('transacao','corretora_id'),
     ('posicao_carteira','id'),('posicao_carteira','quantidade_total'),('posicao_carteira','preco_medio'),('posicao_carteira','acao_id'),('posicao_carteira','corretora_id'))

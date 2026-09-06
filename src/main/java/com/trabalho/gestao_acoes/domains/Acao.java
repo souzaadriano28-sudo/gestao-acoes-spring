@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Objects;
 
 @Entity
@@ -31,6 +32,19 @@ public class Acao implements Serializable {
 
     @Column(nullable = false)
     private LocalDateTime dataHoraCotacao;
+
+    @Column(length = 40)
+    private String quoteSourceType;
+
+    @Column(length = 80)
+    private String quoteProvider;
+
+    private Instant quoteReferenceAt;
+
+    private Instant quoteFetchedAt;
+
+    @Column(length = 40)
+    private String quoteReferenceKind;
 
     public Acao() {
     }
@@ -65,6 +79,16 @@ public class Acao implements Serializable {
 
     public LocalDateTime getDataHoraCotacao() { return dataHoraCotacao; }
     public void setDataHoraCotacao(LocalDateTime dataHoraCotacao) { this.dataHoraCotacao = dataHoraCotacao; }
+    public String getQuoteSourceType() { return quoteSourceType; }
+    public void setQuoteSourceType(String quoteSourceType) { this.quoteSourceType = quoteSourceType; }
+    public String getQuoteProvider() { return quoteProvider; }
+    public void setQuoteProvider(String quoteProvider) { this.quoteProvider = quoteProvider; }
+    public Instant getQuoteReferenceAt() { return quoteReferenceAt; }
+    public void setQuoteReferenceAt(Instant quoteReferenceAt) { this.quoteReferenceAt = quoteReferenceAt; }
+    public Instant getQuoteFetchedAt() { return quoteFetchedAt; }
+    public void setQuoteFetchedAt(Instant quoteFetchedAt) { this.quoteFetchedAt = quoteFetchedAt; }
+    public String getQuoteReferenceKind() { return quoteReferenceKind; }
+    public void setQuoteReferenceKind(String quoteReferenceKind) { this.quoteReferenceKind = quoteReferenceKind; }
 
     @Override
     public boolean equals(Object o) {

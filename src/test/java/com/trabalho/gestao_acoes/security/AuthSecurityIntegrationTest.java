@@ -41,7 +41,8 @@ class AuthSecurityIntegrationTest {
 
     @Test
     void anonymousSurfaceIsDenyByDefaultAndCsrfRunsBeforeBusinessLogic() throws Exception {
-        for (String path : new String[]{"/acoes","/corretoras","/carteira/posicoes","/carteira/saldo-total","/v3/api-docs","/h2-console"}) {
+        for (String path : new String[]{"/acoes","/corretoras","/carteira/posicoes","/carteira/saldo-total",
+                "/carteira/dashboard","/carteira/posicoes/detalhadas","/carteira/movimentacoes","/v3/api-docs","/h2-console"}) {
             mvc.perform(get(path)).andExpect(status().isUnauthorized()).andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
         }

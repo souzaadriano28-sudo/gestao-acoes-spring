@@ -104,8 +104,10 @@ class CarteiraConcurrencyIntegrationTest {
 
     @AfterEach
     void tearDown() throws InterruptedException {
-        executor.shutdownNow();
-        executor.awaitTermination(2, TimeUnit.SECONDS);
+        if (executor != null) {
+            executor.shutdownNow();
+            executor.awaitTermination(2, TimeUnit.SECONDS);
+        }
     }
 
     @Test
@@ -114,7 +116,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
                 result.next();
-                assertThat(result.getLong(1)).isEqualTo(4);
+                assertThat(result.getLong(1)).isEqualTo(6);
             }
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangeloglock WHERE locked = false")) {
                 result.next();
@@ -125,7 +127,47 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
              var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
             result.next();
-            assertThat(result.getLong(1)).isEqualTo(4);
+            assertThat(result.getLong(1)).isEqualTo(6);
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void aaPortfolioReadMigrationUsesPostgreSqlTimezoneColumnsAndCreatesIndexes() throws Exception {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            try (var columns = statement.executeQuery("""
+                    SELECT column_name, data_type
+                      FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'acao'
+                       AND column_name IN ('quote_provider', 'quote_reference_at', 'quote_fetched_at')
+                     ORDER BY column_name
+                    """)) {
+                assertThat(Stream.generate(() -> {
+                    try {
+                        return columns.next() ? columns.getString(1) + ":" + columns.getString(2) : null;
+                    } catch (java.sql.SQLException error) {
+                        throw new RuntimeException(error);
+                    }
+                }).takeWhile(java.util.Objects::nonNull).toList()).containsExactly(
+                        "quote_fetched_at:timestamp with time zone",
+                        "quote_provider:character varying",
+                        "quote_reference_at:timestamp with time zone");
+            }
+            try (var indexes = statement.executeQuery("""
+                    SELECT indexname FROM pg_indexes
+                     WHERE schemaname = 'public' AND tablename = 'transacao'
+                       AND indexname IN ('idx_transacao_data_id', 'idx_transacao_corretora_data')
+                     ORDER BY indexname
+                    """)) {
+                assertThat(Stream.generate(() -> {
+                    try {
+                        return indexes.next() ? indexes.getString(1) : null;
+                    } catch (java.sql.SQLException error) {
+                        throw new RuntimeException(error);
+                    }
+                }).takeWhile(java.util.Objects::nonNull).toList()).containsExactly(
+                        "idx_transacao_corretora_data", "idx_transacao_data_id");
+            }
         }
     }
 
@@ -239,7 +281,8 @@ class CarteiraConcurrencyIntegrationTest {
                     Thread.currentThread().interrupt();
                     throw new AssertionError(ex);
                 }
-                return new com.trabalho.gestao_acoes.services.ports.CotacaoBolsa(new BigDecimal("30"), "BRL");
+                return new com.trabalho.gestao_acoes.services.ports.CotacaoBolsa(new BigDecimal("30"), "BRL",
+                        "TEST_FIXTURE", "CONCURRENCY_PROVIDER", null, null, null);
             }
             public boolean suportaMercado(String market) { return "BRASIL".equals(market); }
         };

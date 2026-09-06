@@ -15,8 +15,8 @@ class CotacaoServiceTest {
     @Test
     void supportsFixedBrlAndUsdFixturesWithoutNetworkOrCredentials() {
         CotacaoService service = new CotacaoService(List.of(
-                fixture("BRASIL", new CotacaoBolsa(new BigDecimal("20"), "brl")),
-                fixture("AMERICANO", new CotacaoBolsa(new BigDecimal("100"), "USD"))));
+                fixture("BRASIL", quote("20", "brl")),
+                fixture("AMERICANO", quote("100", "USD"))));
 
         assertThat(service.buscar("PETR4", "BRASIL").getPrecoAtual()).isEqualByComparingTo("20.00000000");
         assertThat(service.buscar("AAPL", "AMERICANO").getMoeda()).isEqualTo("USD");
@@ -29,6 +29,7 @@ class CotacaoServiceTest {
         assertInvalid(new CotacaoBolsa(BigDecimal.ZERO, "BRL"), "BRASIL");
         assertInvalid(new CotacaoBolsa(BigDecimal.ONE, null), "BRASIL");
         assertInvalid(new CotacaoBolsa(BigDecimal.ONE, "USD"), "BRASIL");
+        assertInvalid(new CotacaoBolsa(BigDecimal.ONE, "BRL"), "BRASIL");
     }
 
     private static void assertInvalid(CotacaoBolsa quote, String market) {
@@ -41,5 +42,10 @@ class CotacaoServiceTest {
             public CotacaoBolsa buscarCotacao(String ticker) { return quote; }
             public boolean suportaMercado(String candidate) { return market.equals(candidate); }
         };
+    }
+
+    private static CotacaoBolsa quote(String value, String currency) {
+        return new CotacaoBolsa(new BigDecimal(value), currency, "TEST_FIXTURE", "TEST_PROVIDER",
+                null, null, null);
     }
 }
