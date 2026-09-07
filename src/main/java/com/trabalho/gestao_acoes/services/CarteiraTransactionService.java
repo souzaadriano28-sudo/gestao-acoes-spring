@@ -5,6 +5,7 @@ import com.trabalho.gestao_acoes.domains.Corretora;
 import com.trabalho.gestao_acoes.domains.PosicaoCarteira;
 import com.trabalho.gestao_acoes.domains.Transacao;
 import com.trabalho.gestao_acoes.domains.enums.TipoTransacao;
+import com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus;
 import com.trabalho.gestao_acoes.repositories.AcaoRepository;
 import com.trabalho.gestao_acoes.repositories.CorretoraRepository;
 import com.trabalho.gestao_acoes.repositories.PosicaoCarteiraRepository;
@@ -73,7 +74,11 @@ public class CarteiraTransactionService {
     }
 
     private Corretora lockBroker(Long id) {
-        return brokers.findByIdForUpdate(id).orElseThrow(() -> new NotFoundException("Corretora não encontrada."));
+        Corretora broker = brokers.findByIdForUpdate(id).orElseThrow(() -> new NotFoundException("Corretora não encontrada."));
+        if (broker.getRegulatoryStatus() != RegulatoryStatus.VERIFIED) {
+            throw new BusinessException("BROKER_UNAVAILABLE", "A corretora não possui autorização regulatória válida para novas operações.");
+        }
+        return broker;
     }
 
     private void validateMutation(Long assetId, Long brokerId, int quantity) {

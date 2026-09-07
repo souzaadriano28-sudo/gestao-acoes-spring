@@ -3,72 +3,59 @@ package com.trabalho.gestao_acoes.services;
 import com.trabalho.gestao_acoes.domains.Corretora;
 import com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus;
 import com.trabalho.gestao_acoes.repositories.CorretoraRepository;
+import com.trabalho.gestao_acoes.services.exceptions.UpstreamUnavailableException;
 import com.trabalho.gestao_acoes.services.ports.*;
-import com.trabalho.gestao_acoes.mappers.CorretoraMapper;
 import java.time.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class RegulatoryEvidenceServiceTest {
-    private static final Instant NOW = Instant.parse("2026-09-06T15:00:00Z");
+    private static final Instant NOW = Instant.parse("2026-09-07T15:00:00Z");
 
     @Test
-    void refreshSeparatesVerifiedEvidenceFromNotFoundBusinessRegistration() {
-        Corretora verified = broker("12345678000199", RegulatoryStatus.NOT_CHECKED);
-        Corretora absent = broker("98765432000110", RegulatoryStatus.NOT_CHECKED);
-        CorretoraRepository repository = mock(CorretoraRepository.class);
-        RegulatoryRegistryPort registry = mock(RegulatoryRegistryPort.class);
-        when(repository.findAll()).thenReturn(List.of(verified, absent));
-        when(registry.load()).thenReturn(new RegulatoryRegistrySnapshot("CVM", NOW.minusSeconds(3600), NOW,
-                Map.of(verified.getCnpj(), new RegulatoryRegistrySnapshot.RegulatoryEntry("CORRETORA", "123"))));
-
-        new RegulatoryEvidenceService(repository, registry, Clock.fixed(NOW, ZoneOffset.UTC)).refreshAll();
-
+    void refreshMarksVerifiedInactiveAndIncompatibleWithoutRemovingBrokers() {
+        Corretora verified = broker("11222333000181", RegulatoryStatus.NOT_CHECKED);
+        Corretora inactive = broker("11444777000161", RegulatoryStatus.VERIFIED);
+        Corretora incompatible = broker("19131243000197", RegulatoryStatus.VERIFIED);
+        CorretoraRepository repository = mock(CorretoraRepository.class); RegulatoryRegistryPort registry = mock(RegulatoryRegistryPort.class);
+        when(repository.findAll()).thenReturn(List.of(verified, inactive, incompatible));
+        when(registry.load()).thenReturn(snapshot(Map.of(
+                verified.getCnpj(), List.of(entry("CORRETORAS", "EM FUNCIONAMENTO NORMAL")),
+                inactive.getCnpj(), List.of(entry("CORRETORAS", "CANCELADA")),
+                incompatible.getCnpj(), List.of(entry("CUSTODIANTES DE VALORES MOBILIÁRIOS", "EM FUNCIONAMENTO NORMAL")))));
+        RegulatoryVerificationService verification = verifier(registry, Duration.ofDays(7));
+        new RegulatoryEvidenceService(repository, verification, Clock.fixed(NOW, ZoneOffset.UTC)).refreshAll();
         assertThat(verified.getRegulatoryStatus()).isEqualTo(RegulatoryStatus.VERIFIED);
-        assertThat(verified.getRegulatoryEvidenceId()).isEqualTo("123");
-        assertThat(absent.getRegulatoryStatus()).isEqualTo(RegulatoryStatus.NOT_FOUND);
-        assertThat(absent.getRegulatoryReason()).isEqualTo("CNPJ_NOT_FOUND_IN_ACTIVE_CVM_INTERMEDIARIES");
-        verify(repository).saveAll(List.of(verified, absent));
+        assertThat(inactive.getRegulatoryStatus()).isEqualTo(RegulatoryStatus.INACTIVE);
+        assertThat(incompatible.getRegulatoryStatus()).isEqualTo(RegulatoryStatus.INCOMPATIBLE);
+        assertThat(repository.count()).isZero();
+        verify(repository).saveAll(List.of(verified, inactive, incompatible)); verify(repository, never()).delete(any());
     }
 
     @Test
-    void providerFailureMakesPriorEvidenceStaleAndUnknownEvidenceUnavailableWithoutChangingReference() {
-        Corretora previous = broker("12345678000199", RegulatoryStatus.VERIFIED);
-        Instant originalReference = NOW.minus(Duration.ofDays(3));
-        previous.setRegulatoryReferenceAt(originalReference);
-        Corretora unknown = broker("98765432000110", RegulatoryStatus.NOT_CHECKED);
-        CorretoraRepository repository = mock(CorretoraRepository.class);
+    void usesRecentCachedSnapshotButBlocksWhenCacheIsMissingOrExpired() {
         RegulatoryRegistryPort registry = mock(RegulatoryRegistryPort.class);
-        when(repository.findAll()).thenReturn(List.of(previous, unknown));
-        when(registry.load()).thenThrow(new RuntimeException("timeout or HTTP 429"));
+        when(registry.load()).thenReturn(snapshot(Map.of())).thenThrow(new RuntimeException("503"));
+        RegulatoryVerificationService verification = verifier(registry, Duration.ofDays(7));
+        verification.loadSnapshot();
+        assertThat(verification.loadSnapshot()).isNotNull();
 
-        new RegulatoryEvidenceService(repository, registry, Clock.fixed(NOW, ZoneOffset.UTC)).refreshAll();
+        RegulatoryRegistryPort unavailable = mock(RegulatoryRegistryPort.class); when(unavailable.load()).thenThrow(new RuntimeException("timeout"));
+        assertThatThrownBy(() -> verifier(unavailable, Duration.ofDays(7)).loadSnapshot()).isInstanceOf(UpstreamUnavailableException.class);
 
-        assertThat(previous.getRegulatoryStatus()).isEqualTo(RegulatoryStatus.STALE);
-        assertThat(previous.getRegulatoryReferenceAt()).isEqualTo(originalReference);
-        assertThat(unknown.getRegulatoryStatus()).isEqualTo(RegulatoryStatus.UNAVAILABLE);
-        assertThat(previous.getRegulatoryCheckedAt()).isEqualTo(NOW);
-        assertThat(unknown.getRegulatoryCheckedAt()).isEqualTo(NOW);
+        RegulatoryRegistryPort stale = mock(RegulatoryRegistryPort.class);
+        when(stale.load()).thenReturn(new RegulatoryRegistrySnapshot("CVM", NOW.minus(Duration.ofDays(8)), NOW, Map.of()));
+        assertThatThrownBy(() -> verifier(stale, Duration.ofDays(7)).loadSnapshot()).isInstanceOf(UpstreamUnavailableException.class);
     }
 
-    @Test
-    void mapperMarksOldVerifiedEvidenceStaleAtTheConfiguredBoundary() {
-        Corretora broker = broker("12345678000199", RegulatoryStatus.VERIFIED);
-        broker.setRegulatoryReferenceAt(NOW.minus(Duration.ofDays(2)).minusSeconds(1));
-        broker.setRegulatoryCheckedAt(NOW.minus(Duration.ofDays(2)));
-        broker.setRegulatoryCategory("CORRETORA"); broker.setRegulatorySource("CVM"); broker.setRegulatoryEvidenceId("123");
-
-        var dto = CorretoraMapper.toDTO(broker, NOW, Duration.ofDays(2));
-
-        assertThat(dto.getRegulatoryEvidence().status()).isEqualTo(RegulatoryStatus.STALE);
-        assertThat(dto.getRegulatoryEvidence().reason()).isEqualTo("CVM_REGISTRY_FRESHNESS_EXCEEDED");
-        assertThat(dto.getRegulatoryEvidence().referenceAt()).isEqualTo(broker.getRegulatoryReferenceAt());
+    private static RegulatoryVerificationService verifier(RegulatoryRegistryPort registry, Duration freshness) {
+        return new RegulatoryVerificationService(registry, Clock.fixed(NOW, ZoneOffset.UTC), freshness, Set.of("CORRETORAS"));
     }
-
-    private static Corretora broker(String cnpj, RegulatoryStatus status) {
-        Corretora broker = new Corretora(); broker.setCnpj(cnpj); broker.setRegulatoryStatus(status); return broker;
+    private static RegulatoryRegistrySnapshot snapshot(Map<String,List<RegulatoryRegistrySnapshot.RegulatoryEntry>> entries) {
+        return new RegulatoryRegistrySnapshot("CVM", NOW.minus(Duration.ofHours(1)), NOW, entries);
     }
+    private static RegulatoryRegistrySnapshot.RegulatoryEntry entry(String category, String status) { return new RegulatoryRegistrySnapshot.RegulatoryEntry(category, status, "123"); }
+    private static Corretora broker(String cnpj, RegulatoryStatus status) { Corretora broker = new Corretora(); broker.setCnpj(cnpj); broker.setRegulatoryStatus(status); return broker; }
 }

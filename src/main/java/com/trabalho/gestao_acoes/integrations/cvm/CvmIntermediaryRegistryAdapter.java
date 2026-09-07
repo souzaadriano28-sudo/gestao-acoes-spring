@@ -39,9 +39,8 @@ public class CvmIntermediaryRegistryAdapter implements RegulatoryRegistryPort {
         return new RegulatoryRegistrySnapshot(SOURCE, referenceAt, fetchedAt, parse(body));
     }
 
-    static Map<String, RegulatoryEntry> parse(byte[] zipBytes) {
-        Map<String, SortedSet<String>> categories = new HashMap<>();
-        Map<String, SortedSet<String>> evidenceIds = new HashMap<>();
+    static Map<String, List<RegulatoryEntry>> parse(byte[] zipBytes) {
+        Map<String, List<RegulatoryEntry>> entries = new HashMap<>();
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes), CSV_CHARSET)) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
@@ -56,18 +55,21 @@ public class CvmIntermediaryRegistryAdapter implements RegulatoryRegistryPort {
                     while ((line = reader.readLine()) != null) {
                         List<String> values = csv(line);
                         if (values.size() <= Math.max(Math.max(type, cnpj), Math.max(status, code))) continue;
-                        if (!"EM FUNCIONAMENTO NORMAL".equalsIgnoreCase(values.get(status).trim())) continue;
                         String canonical = values.get(cnpj).replaceAll("\\D", "");
                         String category = values.get(type).trim();
+                        String registryStatus = values.get(status).trim();
                         String evidenceId = values.get(code).trim();
-                        if (canonical.length() != 14 || category.isBlank() || evidenceId.isBlank()) continue;
-                        categories.computeIfAbsent(canonical, ignored -> new TreeSet<>()).add(category);
-                        evidenceIds.computeIfAbsent(canonical, ignored -> new TreeSet<>()).add(evidenceId);
+                        if (canonical.length() != 14) continue;
+                        if (category.isBlank() || registryStatus.isBlank() || evidenceId.isBlank()) {
+                            throw new IllegalStateException("Official CVM row has incomplete regulatory evidence");
+                        }
+                        entries.computeIfAbsent(canonical, ignored -> new ArrayList<>())
+                                .add(new RegulatoryEntry(category, registryStatus, evidenceId));
                     }
-                    Map<String, RegulatoryEntry> result = new HashMap<>();
-                    categories.forEach((cnpjValue, values) -> result.put(cnpjValue,
-                            new RegulatoryEntry(String.join(" | ", values), String.join(",", evidenceIds.get(cnpjValue)))));
-                    return result;
+                    entries.replaceAll((ignored, values) -> values.stream()
+                            .sorted(Comparator.comparing(RegulatoryEntry::category).thenComparing(RegulatoryEntry::evidenceId))
+                            .toList());
+                    return entries;
                 }
             }
         } catch (IOException | RuntimeException error) {

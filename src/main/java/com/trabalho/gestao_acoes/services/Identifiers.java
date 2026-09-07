@@ -8,6 +8,8 @@ import java.util.regex.Pattern;
 public final class Identifiers {
     private static final Pattern CNPJ_DIGITS = Pattern.compile("\\d{14}");
     private static final Pattern CNPJ_MASK = Pattern.compile("\\d{2}\\.\\d{3}\\.\\d{3}/\\d{4}-\\d{2}");
+    private static final Pattern CEP_DIGITS = Pattern.compile("\\d{8}");
+    private static final Pattern CEP_MASK = Pattern.compile("\\d{5}-\\d{3}");
 
     private Identifiers() {}
 
@@ -45,6 +47,17 @@ public final class Identifiers {
             throw new BusinessException("VALIDATION_ERROR", "A consulta exige CNPJ com 14 dígitos, sem máscara.", "cnpj");
         }
         return validateCnpj(value);
+    }
+
+    public static String cepFromBody(String value) {
+        if (value == null) {
+            throw new BusinessException("VALIDATION_ERROR", "O CEP é obrigatório.", "cep");
+        }
+        String trimmed = value.trim();
+        if (!CEP_DIGITS.matcher(trimmed).matches() && !CEP_MASK.matcher(trimmed).matches()) {
+            throw new BusinessException("VALIDATION_ERROR", "Informe o CEP com 8 dígitos ou na máscara convencional.", "cep");
+        }
+        return trimmed.replace("-", "");
     }
 
     private static String validateCnpj(String digits) {

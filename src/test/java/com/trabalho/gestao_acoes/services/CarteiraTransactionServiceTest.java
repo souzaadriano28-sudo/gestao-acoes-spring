@@ -6,6 +6,8 @@ import com.trabalho.gestao_acoes.repositories.PosicaoCarteiraRepository;
 import com.trabalho.gestao_acoes.repositories.TransacaoRepository;
 import com.trabalho.gestao_acoes.services.exceptions.BusinessException;
 import com.trabalho.gestao_acoes.services.exceptions.InvalidQuoteException;
+import com.trabalho.gestao_acoes.domains.Corretora;
+import com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -13,6 +15,7 @@ import java.math.BigDecimal;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class CarteiraTransactionServiceTest {
     @Test
@@ -29,5 +32,20 @@ class CarteiraTransactionServiceTest {
         assertThatThrownBy(() -> service.comprar(1L, 1L, 1, BigDecimal.ZERO)).isInstanceOf(InvalidQuoteException.class);
         assertThatThrownBy(() -> service.vender(1L, 1L, 1, null)).isInstanceOf(InvalidQuoteException.class);
         verifyNoInteractions(transactions, positions, assets, brokers);
+    }
+
+    @Test
+    void blocksNewOperationsWhenHistoricalBrokerLosesAuthorization() {
+        TransacaoRepository transactions = mock(TransacaoRepository.class);
+        PosicaoCarteiraRepository positions = mock(PosicaoCarteiraRepository.class);
+        AcaoRepository assets = mock(AcaoRepository.class);
+        CorretoraRepository brokers = mock(CorretoraRepository.class);
+        Corretora historical = new Corretora(); historical.setId(1L); historical.setRegulatoryStatus(RegulatoryStatus.INACTIVE);
+        when(brokers.findByIdForUpdate(1L)).thenReturn(java.util.Optional.of(historical));
+        CarteiraTransactionService service = new CarteiraTransactionService(transactions, positions, assets, brokers);
+
+        assertThatThrownBy(() -> service.comprar(1L, 1L, 1, BigDecimal.ONE))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo("BROKER_UNAVAILABLE");
+        verifyNoInteractions(transactions, positions, assets);
     }
 }

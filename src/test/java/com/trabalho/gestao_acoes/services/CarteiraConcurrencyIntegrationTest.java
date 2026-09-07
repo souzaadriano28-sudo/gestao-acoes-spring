@@ -102,8 +102,10 @@ class CarteiraConcurrencyIntegrationTest {
         brokers.deleteAll();
         asset = assets.save(new Acao(null, "PETR4", "Petrobras", "BRASIL", "BRL",
                 new BigDecimal("20.00000000"), LocalDateTime.now()));
-        broker = brokers.save(new Corretora(null, "11222333000181", "Corretora Teste", "Teste",
-                null, null, "01001000", null, null, null, null, null, "SP", "ATIVA", true, LocalDateTime.now()));
+        broker = new Corretora(null, "11222333000181", "Corretora Teste", "Teste",
+                null, null, "01001000", null, null, null, null, null, "SP", "ATIVA", true, LocalDateTime.now());
+        broker.setRegulatoryStatus(com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus.VERIFIED);
+        broker = brokers.save(broker);
         executor = Executors.newFixedThreadPool(2);
     }
 
@@ -121,7 +123,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
                 result.next();
-                assertThat(result.getLong(1)).isEqualTo(9);
+                assertThat(result.getLong(1)).isEqualTo(10);
             }
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangeloglock WHERE locked = false")) {
                 result.next();
@@ -132,7 +134,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
              var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
             result.next();
-            assertThat(result.getLong(1)).isEqualTo(9);
+            assertThat(result.getLong(1)).isEqualTo(10);
         }
     }
 
@@ -272,8 +274,10 @@ class CarteiraConcurrencyIntegrationTest {
 
     @Test
     void keepsPositionsSeparatedByBrokerAndRejectsQuantityOverflowWithoutHistory() {
-        Corretora second = brokers.save(new Corretora(null, "19131243000197", "Segunda Corretora", "Segunda",
-                null, null, "20040002", null, null, null, null, null, "RJ", "ATIVA", true, LocalDateTime.now()));
+        Corretora second = new Corretora(null, "19131243000197", "Segunda Corretora", "Segunda",
+                null, null, "20040002", null, null, null, null, null, "RJ", "ATIVA", true, LocalDateTime.now());
+        second.setRegulatoryStatus(com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus.VERIFIED);
+        second = brokers.save(second);
         service.comprar(asset.getId(), broker.getId(), 1, new BigDecimal("10.00000000"));
         service.comprar(asset.getId(), second.getId(), 2, new BigDecimal("20.00000000"));
         assertThat(positions.count()).isEqualTo(2);
@@ -374,7 +378,16 @@ class CarteiraConcurrencyIntegrationTest {
             address.setLocalidade("São Paulo"); address.setUf("SP");
             return address;
         };
-        CorretoraService registration = new CorretoraService(brokers, companyClient, addressClient);
+        java.time.Clock registrationClock = java.time.Clock.systemUTC();
+        com.trabalho.gestao_acoes.services.ports.RegulatoryRegistryPort registry = () ->
+                new com.trabalho.gestao_acoes.services.ports.RegulatoryRegistrySnapshot("CVM",
+                        registrationClock.instant().minusSeconds(60), registrationClock.instant(), java.util.Map.of(
+                        "19131243000197", java.util.List.of(new com.trabalho.gestao_acoes.services.ports.RegulatoryRegistrySnapshot.RegulatoryEntry(
+                                "CORRETORAS", "EM FUNCIONAMENTO NORMAL", "123"))));
+        RegulatoryVerificationService verification = new RegulatoryVerificationService(registry, registrationClock,
+                java.time.Duration.ofDays(7), java.util.Set.of("CORRETORAS"));
+        CorretoraService registration = new CorretoraService(brokers, companyClient, addressClient, verification,
+                registrationClock, java.time.Duration.ofDays(7));
         com.trabalho.gestao_acoes.resources.CorretoraResource resource = new com.trabalho.gestao_acoes.resources.CorretoraResource();
         ReflectionTestUtils.setField(resource, "service", registration);
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
