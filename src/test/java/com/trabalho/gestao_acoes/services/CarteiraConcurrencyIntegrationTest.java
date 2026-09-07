@@ -9,6 +9,8 @@ import com.trabalho.gestao_acoes.repositories.AcaoRepository;
 import com.trabalho.gestao_acoes.repositories.CorretoraRepository;
 import com.trabalho.gestao_acoes.repositories.PosicaoCarteiraRepository;
 import com.trabalho.gestao_acoes.repositories.TransacaoRepository;
+import com.trabalho.gestao_acoes.repositories.ExchangeRateSnapshotRepository;
+import com.trabalho.gestao_acoes.domains.ExchangeRateSnapshot;
 import com.trabalho.gestao_acoes.services.exceptions.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +40,7 @@ import java.nio.file.Path;
 import javax.sql.DataSource;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -81,6 +84,7 @@ class CarteiraConcurrencyIntegrationTest {
     @Autowired private CorretoraRepository brokers;
     @Autowired private PosicaoCarteiraRepository positions;
     @Autowired private TransacaoRepository transactions;
+    @Autowired private ExchangeRateSnapshotRepository exchangeRates;
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private DataSource dataSource;
     @Autowired private liquibase.integration.spring.SpringLiquibase liquibase;
@@ -91,6 +95,7 @@ class CarteiraConcurrencyIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        exchangeRates.deleteAll();
         transactions.deleteAll();
         positions.deleteAll();
         assets.deleteAll();
@@ -104,8 +109,10 @@ class CarteiraConcurrencyIntegrationTest {
 
     @AfterEach
     void tearDown() throws InterruptedException {
-        executor.shutdownNow();
-        executor.awaitTermination(2, TimeUnit.SECONDS);
+        if (executor != null) {
+            executor.shutdownNow();
+            executor.awaitTermination(2, TimeUnit.SECONDS);
+        }
     }
 
     @Test
@@ -114,7 +121,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
                 result.next();
-                assertThat(result.getLong(1)).isEqualTo(4);
+                assertThat(result.getLong(1)).isEqualTo(9);
             }
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangeloglock WHERE locked = false")) {
                 result.next();
@@ -125,7 +132,83 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
              var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
             result.next();
-            assertThat(result.getLong(1)).isEqualTo(4);
+            assertThat(result.getLong(1)).isEqualTo(9);
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void aaPortfolioReadMigrationUsesPostgreSqlTimezoneColumnsAndCreatesIndexes() throws Exception {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            try (var columns = statement.executeQuery("""
+                    SELECT column_name, data_type
+                      FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'acao'
+                       AND column_name IN ('quote_provider', 'quote_reference_at', 'quote_fetched_at')
+                     ORDER BY column_name
+                    """)) {
+                assertThat(Stream.generate(() -> {
+                    try {
+                        return columns.next() ? columns.getString(1) + ":" + columns.getString(2) : null;
+                    } catch (java.sql.SQLException error) {
+                        throw new RuntimeException(error);
+                    }
+                }).takeWhile(java.util.Objects::nonNull).toList()).containsExactly(
+                        "quote_fetched_at:timestamp with time zone",
+                        "quote_provider:character varying",
+                        "quote_reference_at:timestamp with time zone");
+            }
+            try (var indexes = statement.executeQuery("""
+                    SELECT indexname FROM pg_indexes
+                     WHERE schemaname = 'public' AND tablename = 'transacao'
+                       AND indexname IN ('idx_transacao_data_id', 'idx_transacao_corretora_data',
+                                         'idx_transacao_tipo_data_id', 'idx_transacao_acao_data_id')
+                     ORDER BY indexname
+                    """)) {
+                assertThat(Stream.generate(() -> {
+                    try {
+                        return indexes.next() ? indexes.getString(1) : null;
+                    } catch (java.sql.SQLException error) {
+                        throw new RuntimeException(error);
+                    }
+                }).takeWhile(java.util.Objects::nonNull).toList()).containsExactly(
+                        "idx_transacao_acao_data_id", "idx_transacao_corretora_data",
+                        "idx_transacao_data_id", "idx_transacao_tipo_data_id");
+            }
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void aabExchangeSnapshotRoundTripsExactDecimalAndTimezoneOnPostgreSql() {
+        ExchangeRateSnapshot snapshot = new ExchangeRateSnapshot();
+        snapshot.setBaseCurrency("USD"); snapshot.setQuoteCurrency("BRL");
+        snapshot.setRate(new BigDecimal("5.43219876")); snapshot.setSourceType("OFFICIAL_REFERENCE_RATE");
+        snapshot.setProvider("BANCO_CENTRAL_DO_BRASIL_PTAX");
+        snapshot.setReferenceAt(Instant.parse("2026-09-05T16:05:00Z"));
+        snapshot.setFetchedAt(Instant.parse("2026-09-06T15:00:00Z"));
+        snapshot.setReferenceKind("BCB_PTAX_CLOSING_REFERENCE");
+
+        exchangeRates.saveAndFlush(snapshot);
+        var persisted = exchangeRates.findByBaseCurrencyAndQuoteCurrency("USD", "BRL").orElseThrow();
+
+        assertThat(persisted.getRate()).isEqualByComparingTo("5.43219876");
+        assertThat(persisted.getReferenceAt()).isEqualTo(snapshot.getReferenceAt());
+        assertThat(persisted.getFetchedAt()).isEqualTo(snapshot.getFetchedAt());
+    }
+
+    @Test
+    @Timeout(10)
+    void aacRepresentativePagedReadsUseBoundedIndexPlans() throws Exception {
+        service.comprar(asset.getId(), broker.getId(), 1, new BigDecimal("20.00000000"));
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("SET enable_seqscan = off");
+            String movementPlan = explain(statement, "SELECT id FROM transacao WHERE corretora_id = " + broker.getId()
+                    + " ORDER BY data_hora DESC, id DESC LIMIT 20");
+            String positionPlan = explain(statement, "SELECT id FROM posicao_carteira WHERE corretora_id = " + broker.getId()
+                    + " ORDER BY acao_id, id LIMIT 20");
+            assertThat(movementPlan).contains("Limit", "idx_transacao_corretora_data").doesNotContain("Seq Scan");
+            assertThat(positionPlan).contains("Limit", "idx_posicao_corretora_acao_id").doesNotContain("Seq Scan");
         }
     }
 
@@ -239,7 +322,8 @@ class CarteiraConcurrencyIntegrationTest {
                     Thread.currentThread().interrupt();
                     throw new AssertionError(ex);
                 }
-                return new com.trabalho.gestao_acoes.services.ports.CotacaoBolsa(new BigDecimal("30"), "BRL");
+                return new com.trabalho.gestao_acoes.services.ports.CotacaoBolsa(new BigDecimal("30"), "BRL",
+                        "TEST_FIXTURE", "CONCURRENCY_PROVIDER", null, null, null);
             }
             public boolean suportaMercado(String market) { return "BRASIL".equals(market); }
         };
@@ -393,6 +477,14 @@ class CarteiraConcurrencyIntegrationTest {
         }
         String remainder = script.substring(start).trim();
         if (!remainder.isEmpty()) statement.execute(remainder + ";");
+    }
+
+    private static String explain(java.sql.Statement statement, String sql) throws java.sql.SQLException {
+        StringBuilder plan = new StringBuilder();
+        try (var result = statement.executeQuery("EXPLAIN " + sql)) {
+            while (result.next()) plan.append(result.getString(1)).append('\n');
+        }
+        return plan.toString();
     }
 
     private List<Future<Throwable>> runTogether(ThrowingAction first, ThrowingAction second) {

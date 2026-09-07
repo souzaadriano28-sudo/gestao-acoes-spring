@@ -2,6 +2,7 @@ package com.trabalho.gestao_acoes.resources;
 
 import com.trabalho.gestao_acoes.domains.dtos.CorretoraDTO;
 import com.trabalho.gestao_acoes.services.CorretoraService;
+import com.trabalho.gestao_acoes.services.RegulatoryEvidenceService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,8 @@ public class CorretoraResource {
 
     @Autowired
     private CorretoraService service;
+    @Autowired
+    private RegulatoryEvidenceService regulatoryEvidence;
 
     // 1. POST /corretoras (Cadastrar)
     @PostMapping
@@ -49,5 +52,11 @@ public class CorretoraResource {
     public ResponseEntity<CorretoraDTO> findByCnpj(@PathVariable String cnpj) {
         CorretoraDTO dto = service.findByCnpj(cnpj);
         return ResponseEntity.ok().body(dto);
+    }
+
+    @PostMapping("/evidencia-regulatoria/atualizar")
+    public ResponseEntity<Void> refreshRegulatoryEvidence() {
+        regulatoryEvidence.refreshAll();
+        return ResponseEntity.noContent().build();
     }
 }

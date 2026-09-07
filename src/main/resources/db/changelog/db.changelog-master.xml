@@ -6,4 +6,6 @@
         https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
     <include file="db/changelog/changes/001-investment-schema.xml"/>
     <include file="db/changelog/changes/002-secure-admin-authentication.xml"/>
+    <include file="db/changelog/changes/003-portfolio-read-model.xml"/>
+    <include file="db/changelog/changes/004-trustworthy-integrations.xml"/>
 </databaseChangeLog>

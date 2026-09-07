@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet id="005-add-quote-provenance" author="atlas-carteira">
+        <addColumn tableName="acao">
+            <column name="quote_source_type" type="VARCHAR(40)"/>
+            <column name="quote_provider" type="VARCHAR(80)"/>
+            <column name="quote_reference_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="quote_fetched_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="quote_reference_kind" type="VARCHAR(40)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="acao" columnName="quote_reference_kind"/>
+            <dropColumn tableName="acao" columnName="quote_fetched_at"/>
+            <dropColumn tableName="acao" columnName="quote_reference_at"/>
+            <dropColumn tableName="acao" columnName="quote_provider"/>
+            <dropColumn tableName="acao" columnName="quote_source_type"/>
+        </rollback>
+    </changeSet>
+    <changeSet id="006-add-movement-read-indexes" author="atlas-carteira">
+        <createIndex tableName="transacao" indexName="idx_transacao_data_id">
+            <column name="data_hora" descending="true"/>
+            <column name="id" descending="true"/>
+        </createIndex>
+        <createIndex tableName="transacao" indexName="idx_transacao_corretora_data">
+            <column name="corretora_id"/>
+            <column name="data_hora" descending="true"/>
+            <column name="id" descending="true"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="transacao" indexName="idx_transacao_corretora_data"/>
+            <dropIndex tableName="transacao" indexName="idx_transacao_data_id"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

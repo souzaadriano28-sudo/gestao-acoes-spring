@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas-carteira.local/schemas/portfolio-read-model.schema.json",
+  "title": "Portfolio read endpoint response",
+  "oneOf": [
+    { "$ref": "#/$defs/dashboard" },
+    { "$ref": "#/$defs/positionPage" },
+    { "$ref": "#/$defs/movementPage" }
+  ],
+  "$defs": {
+    "availability": { "enum": ["AVAILABLE", "STALE", "UNAVAILABLE"] },
+    "money": {
+      "type": "object", "additionalProperties": false,
+      "required": ["availability", "value", "currency", "reason"],
+      "properties": {
+        "availability": { "$ref": "#/$defs/availability" }, "value": { "type": ["number", "null"] },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }, "reason": { "type": ["string", "null"] }
+      }
+    },
+    "percentage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["availability", "value", "reason"],
+      "properties": { "availability": { "$ref": "#/$defs/availability" }, "value": { "type": ["number", "null"] }, "reason": { "type": ["string", "null"] } }
+    },
+    "quoteProvenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["availability", "sourceType", "provider", "referenceAt", "fetchedAt", "referenceKind", "currency", "reason"],
+      "properties": {
+        "availability": { "$ref": "#/$defs/availability" }, "sourceType": { "type": ["string", "null"] },
+        "provider": { "type": ["string", "null"] }, "referenceAt": { "type": ["string", "null"], "format": "date-time" },
+        "fetchedAt": { "type": ["string", "null"], "format": "date-time" }, "referenceKind": { "type": ["string", "null"] },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }, "reason": { "type": ["string", "null"] }
+      }
+    },
+    "exchangeProvenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["availability", "baseCurrency", "quoteCurrency", "rate", "sourceType", "provider", "referenceAt", "fetchedAt", "referenceKind", "reason"],
+      "properties": {
+        "availability": { "$ref": "#/$defs/availability" }, "baseCurrency": { "const": "USD" }, "quoteCurrency": { "const": "BRL" },
+        "rate": { "type": ["number", "null"], "exclusiveMinimum": 0 }, "sourceType": { "type": ["string", "null"] }, "provider": { "type": ["string", "null"] },
+        "referenceAt": { "type": ["string", "null"], "format": "date-time" }, "fetchedAt": { "type": ["string", "null"], "format": "date-time" },
+        "referenceKind": { "type": ["string", "null"] }, "reason": { "type": ["string", "null"] }
+      }
+    },
+    "position": {
+      "type": "object", "additionalProperties": false,
+      "required": ["positionId", "assetId", "ticker", "market", "brokerId", "brokerName", "quantity", "nativeCurrency", "averagePrice", "cost", "currentQuote", "marketValue", "unrealizedResult", "quoteProvenance"],
+      "properties": {
+        "positionId": { "type": "integer" }, "assetId": { "type": "integer" }, "ticker": { "type": "string" }, "market": { "enum": ["BRASIL", "AMERICANO"] },
+        "brokerId": { "type": "integer" }, "brokerName": { "type": "string" }, "quantity": { "type": "integer", "minimum": 1 }, "nativeCurrency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "averagePrice": { "$ref": "#/$defs/money" }, "cost": { "$ref": "#/$defs/money" }, "currentQuote": { "$ref": "#/$defs/money" },
+        "marketValue": { "$ref": "#/$defs/money" }, "unrealizedResult": { "$ref": "#/$defs/money" }, "quoteProvenance": { "$ref": "#/$defs/quoteProvenance" }
+      }
+    },
+    "movement": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "type", "assetId", "ticker", "market", "brokerId", "brokerName", "quantity", "unitPrice", "recordedAt", "timeBasis", "historicalQuoteProvenance"],
+      "properties": {
+        "id": { "type": "integer" }, "type": { "enum": ["COMPRA", "VENDA"] }, "assetId": { "type": "integer" }, "ticker": { "type": "string" },
+        "market": { "enum": ["BRASIL", "AMERICANO"] }, "brokerId": { "type": "integer" }, "brokerName": { "type": "string" }, "quantity": { "type": "integer", "minimum": 1 },
+        "unitPrice": { "$ref": "#/$defs/money" }, "recordedAt": { "type": "string", "format": "date-time" }, "timeBasis": { "type": "string" },
+        "historicalQuoteProvenance": { "$ref": "#/$defs/quoteProvenance" }
+      }
+    },
+    "page": {
+      "type": "object", "additionalProperties": false, "required": ["items", "page", "size", "totalElements", "totalPages"],
+      "properties": { "items": { "type": "array" }, "page": { "type": "integer", "minimum": 0 }, "size": { "type": "integer", "minimum": 1, "maximum": 100 }, "totalElements": { "type": "integer", "minimum": 0 }, "totalPages": { "type": "integer", "minimum": 0 } }
+    },
+    "positionPage": {
+      "allOf": [
+        { "$ref": "#/$defs/page" },
+        { "properties": { "items": { "type": "array", "items": { "$ref": "#/$defs/position" } } } }
+      ]
+    },
+    "movementPage": {
+      "allOf": [
+        { "$ref": "#/$defs/page" },
+        { "properties": { "items": { "type": "array", "items": { "$ref": "#/$defs/movement" } } } }
+      ]
+    },
+    "dashboard": {
+      "type": "object", "additionalProperties": false,
+      "required": ["asOf", "presentationCurrency", "positionCount", "patrimony", "cost", "unrealizedResult", "unrealizedResultPercentage", "positions", "recentMovements", "quoteSources", "exchangeSource"],
+      "properties": {
+        "asOf": { "type": "string", "format": "date-time" }, "presentationCurrency": { "const": "BRL" }, "positionCount": { "type": "integer", "minimum": 0 },
+        "patrimony": { "$ref": "#/$defs/money" }, "cost": { "$ref": "#/$defs/money" }, "unrealizedResult": { "$ref": "#/$defs/money" },
+        "unrealizedResultPercentage": { "$ref": "#/$defs/percentage" }, "positions": { "type": "array", "items": { "$ref": "#/$defs/position" } },
+        "recentMovements": { "type": "array", "maxItems": 5, "items": { "$ref": "#/$defs/movement" } },
+        "quoteSources": { "type": "array", "items": { "$ref": "#/$defs/quoteProvenance" } }, "exchangeSource": { "$ref": "#/$defs/exchangeProvenance" }
+      }
+    }
+  }
+}

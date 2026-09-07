@@ -41,11 +41,14 @@ class AuthSecurityIntegrationTest {
 
     @Test
     void anonymousSurfaceIsDenyByDefaultAndCsrfRunsBeforeBusinessLogic() throws Exception {
-        for (String path : new String[]{"/acoes","/corretoras","/carteira/posicoes","/carteira/saldo-total","/v3/api-docs","/h2-console"}) {
+        for (String path : new String[]{"/acoes","/corretoras","/carteira/posicoes","/carteira/saldo-total",
+                "/carteira/dashboard","/carteira/posicoes/detalhadas","/carteira/movimentacoes","/v3/api-docs","/h2-console"}) {
             mvc.perform(get(path)).andExpect(status().isUnauthorized()).andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
         }
         mvc.perform(post("/carteira/comprar").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+        mvc.perform(post("/corretoras/evidencia-regulatoria/atualizar"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
         mvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }

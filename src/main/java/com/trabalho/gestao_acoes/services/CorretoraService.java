@@ -14,7 +14,11 @@ import com.trabalho.gestao_acoes.services.exceptions.UpstreamNotFoundException;
 import com.trabalho.gestao_acoes.services.ports.CepClientPort;
 import com.trabalho.gestao_acoes.services.ports.CnpjClientPort;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
@@ -25,11 +29,24 @@ public class CorretoraService {
     private final CorretoraRepository repository;
     private final CnpjClientPort cnpjClient;
     private final CepClientPort cepClient;
+    private final Clock clock;
+    private final Duration regulatoryFreshness;
 
     public CorretoraService(CorretoraRepository repository, CnpjClientPort cnpjClient, CepClientPort cepClient) {
+        this(repository, cnpjClient, cepClient, Clock.systemUTC(), Duration.ofDays(2));
+    }
+
+    @Autowired
+    public CorretoraService(CorretoraRepository repository, CnpjClientPort cnpjClient, CepClientPort cepClient,
+            Clock clock, @Value("${app.regulatory.cvm.freshness:P2D}") Duration regulatoryFreshness) {
         this.repository = repository;
         this.cnpjClient = cnpjClient;
         this.cepClient = cepClient;
+        this.clock = clock;
+        if (regulatoryFreshness == null || regulatoryFreshness.isZero() || regulatoryFreshness.isNegative()) {
+            throw new IllegalArgumentException("regulatory freshness must be positive");
+        }
+        this.regulatoryFreshness = regulatoryFreshness;
     }
 
     public CorretoraDTO insert(CorretoraDTO dto) {
@@ -54,24 +71,29 @@ public class CorretoraService {
         dto.setRazaoSocial(company.getRazaoSocial());
         dto.setNomeFantasia(company.getNomeFantasia() == null || company.getNomeFantasia().isBlank() ? company.getRazaoSocial() : company.getNomeFantasia());
         dto.setSituacaoCadastral(company.getDescricaoSituacaoCadastral());
-        dto.setValidadaNaCvm(true);
+        // CNAE/situação empresarial permitem o cadastro acadêmico, mas não comprovam registro CVM.
+        dto.setValidadaNaCvm(false);
         dto.setLogradouro(address.getLogradouro());
         dto.setBairro(address.getBairro());
         dto.setCidade(address.getLocalidade());
         dto.setUf(address.getUf());
         Corretora entity = CorretoraMapper.toEntity(dto);
         entity.setDataCadastro(LocalDateTime.now());
-        return CorretoraMapper.toDTO(repository.save(entity));
+        return dto(repository.save(entity));
     }
 
-    public List<CorretoraDTO> findAll() { return repository.findAll().stream().map(CorretoraMapper::toDTO).toList(); }
+    public List<CorretoraDTO> findAll() { return repository.findAll().stream().map(this::dto).toList(); }
 
     public CorretoraDTO findById(Long id) {
-        return CorretoraMapper.toDTO(repository.findById(id).orElseThrow(() -> new NotFoundException("Corretora não encontrada.")));
+        return dto(repository.findById(id).orElseThrow(() -> new NotFoundException("Corretora não encontrada.")));
+    }
+
+    private CorretoraDTO dto(Corretora entity) {
+        return CorretoraMapper.toDTO(entity, clock.instant(), regulatoryFreshness);
     }
 
     public CorretoraDTO findByCnpj(String cnpj) {
         String canonical = Identifiers.cnpjFromPath(cnpj);
-        return CorretoraMapper.toDTO(repository.findByCnpj(canonical).orElseThrow(() -> new NotFoundException("Corretora não encontrada.")));
+        return dto(repository.findByCnpj(canonical).orElseThrow(() -> new NotFoundException("Corretora não encontrada.")));
     }
 }

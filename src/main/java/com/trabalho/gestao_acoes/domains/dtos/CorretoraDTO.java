@@ -5,6 +5,8 @@ import jakarta.validation.constraints.Null;
 import jakarta.validation.constraints.Size;
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import com.trabalho.gestao_acoes.domains.dtos.broker.BusinessRegistrationDTO;
+import com.trabalho.gestao_acoes.domains.dtos.broker.RegulatoryEvidenceDTO;
 
 public class CorretoraDTO implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -33,6 +35,8 @@ public class CorretoraDTO implements Serializable {
     private String situacaoCadastral;
     private Boolean validadaNaCvm;
     private LocalDateTime dataCadastro;
+    private BusinessRegistrationDTO businessRegistration;
+    private RegulatoryEvidenceDTO regulatoryEvidence;
 
     public CorretoraDTO() {
     }
@@ -84,4 +88,8 @@ public class CorretoraDTO implements Serializable {
 
     public LocalDateTime getDataCadastro() { return dataCadastro; }
     public void setDataCadastro(LocalDateTime dataCadastro) { this.dataCadastro = dataCadastro; }
+    public BusinessRegistrationDTO getBusinessRegistration() { return businessRegistration; }
+    public void setBusinessRegistration(BusinessRegistrationDTO value) { this.businessRegistration = value; }
+    public RegulatoryEvidenceDTO getRegulatoryEvidence() { return regulatoryEvidence; }
+    public void setRegulatoryEvidence(RegulatoryEvidenceDTO value) { this.regulatoryEvidence = value; }
 }
