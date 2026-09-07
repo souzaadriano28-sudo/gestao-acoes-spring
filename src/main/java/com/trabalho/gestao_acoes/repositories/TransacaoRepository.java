@@ -17,8 +17,8 @@ public interface TransacaoRepository extends JpaRepository<Transacao, Long> {
     @Query("select t from Transacao t where (:type is null or t.tipo = :type) " +
             "and (:ticker is null or t.acao.ticker = :ticker) " +
             "and (:brokerId is null or t.corretora.id = :brokerId) " +
-            "and (:fromDate is null or t.dataHora >= :fromDate) " +
-            "and (:toDate is null or t.dataHora <= :toDate)")
+            "and t.dataHora >= coalesce(:fromDate, t.dataHora) " +
+            "and t.dataHora <= coalesce(:toDate, t.dataHora)")
     Page<Transacao> findMovements(@Param("type") TipoTransacao type, @Param("ticker") String ticker,
             @Param("brokerId") Long brokerId, @Param("fromDate") LocalDateTime fromDate,
             @Param("toDate") LocalDateTime toDate, Pageable pageable);

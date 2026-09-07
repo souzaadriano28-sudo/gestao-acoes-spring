@@ -71,6 +71,7 @@ public class PortfolioReadService {
                 PageRequest.of(page, size, MOVEMENT_SORT)).map(this::movement));
     }
 
+    @Transactional
     public DashboardDTO dashboard() {
         Instant asOf = clock.instant();
         List<PosicaoCarteira> entities = positions.findAllDetailed();
