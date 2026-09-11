@@ -29,9 +29,10 @@ public class BrapiStrategy implements CotacaoStrategy {
         }
 
         if (response != null && response.getResults() != null && !response.getResults().isEmpty()) {
-            java.math.BigDecimal preco = response.getResults().get(0).getRegularMarketPrice();
-            String moeda = response.getResults().get(0).getCurrency();
-            return new CotacaoBolsa(preco, moeda, "MARKET_DATA_PROVIDER", "BRAPI", null, null, null);
+            BrapiResponse.Result item = response.getResults().get(0);
+            CotacaoBolsa quote = new CotacaoBolsa(item.getRegularMarketPrice(), item.getCurrency(), "MARKET_DATA_PROVIDER", "BRAPI", null, null, null);
+            quote.setNomeEmpresa(item.getLongName() != null && !item.getLongName().isBlank() ? item.getLongName() : item.getShortName());
+            return quote;
         }
         throw new InvalidQuoteException("Resposta de cotação brasileira ausente ou vazia.");
     }

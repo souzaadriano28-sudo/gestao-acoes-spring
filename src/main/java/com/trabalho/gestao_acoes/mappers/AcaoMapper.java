@@ -17,6 +17,11 @@ public class AcaoMapper {
         dto.setMoeda(entity.getMoeda());
         dto.setCotacaoAtual(entity.getCotacaoAtual());
         dto.setDataHoraCotacao(entity.getDataHoraCotacao());
+        dto.setQuoteSourceType(entity.getQuoteSourceType());
+        dto.setQuoteProvider(entity.getQuoteProvider());
+        dto.setQuoteReferenceAt(entity.getQuoteReferenceAt());
+        dto.setQuoteFetchedAt(entity.getQuoteFetchedAt());
+        dto.setQuoteReferenceKind(entity.getQuoteReferenceKind());
         return dto;
     }
 
@@ -31,6 +36,11 @@ public class AcaoMapper {
         entity.setMoeda(dto.getMoeda());
         entity.setCotacaoAtual(dto.getCotacaoAtual());
         entity.setDataHoraCotacao(dto.getDataHoraCotacao());
+        entity.setQuoteSourceType(dto.getQuoteSourceType());
+        entity.setQuoteProvider(dto.getQuoteProvider());
+        entity.setQuoteReferenceAt(dto.getQuoteReferenceAt());
+        entity.setQuoteFetchedAt(dto.getQuoteFetchedAt());
+        entity.setQuoteReferenceKind(dto.getQuoteReferenceKind());
         return entity;
     }
 }

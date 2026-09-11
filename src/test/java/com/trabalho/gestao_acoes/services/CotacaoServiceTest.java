@@ -23,6 +23,15 @@ class CotacaoServiceTest {
     }
 
     @Test
+    void preservesTheProviderCompanyNameWhenNormalizingTheQuote() {
+        CotacaoBolsa raw = quote("100", "USD");
+        raw.setNomeEmpresa("Apple Inc.");
+        CotacaoService service = new CotacaoService(List.of(fixture("AMERICANO", raw)));
+
+        assertThat(service.buscar("AAPL", "AMERICANO").getNomeEmpresa()).isEqualTo("Apple Inc.");
+    }
+
+    @Test
     void rejectsMissingQuotePriceCurrencyAndCurrencyMismatch() {
         assertInvalid(null, "BRASIL");
         assertInvalid(new CotacaoBolsa(null, "BRL"), "BRASIL");

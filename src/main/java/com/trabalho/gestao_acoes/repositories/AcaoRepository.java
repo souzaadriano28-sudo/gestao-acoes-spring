@@ -11,6 +11,7 @@ import java.util.List;
 public interface AcaoRepository extends JpaRepository<Acao, Long> {
 
     // RF10 e RF12: Busca uma ação específica pelo Ticker para evitar duplicidade
+    Optional<Acao> findByTickerAndMercadoAndOwnerId(String ticker, String mercado, Long ownerId);
     Optional<Acao> findByTickerAndOwnerId(String ticker, Long ownerId);
     Optional<Acao> findByIdAndOwnerId(Long id, Long ownerId);
     List<Acao> findAllByOwnerId(Long ownerId);

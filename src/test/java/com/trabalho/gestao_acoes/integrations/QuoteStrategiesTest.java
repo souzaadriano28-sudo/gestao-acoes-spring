@@ -28,16 +28,26 @@ class QuoteStrategiesTest {
         BrapiClient brapi = mock(BrapiClient.class);
         BrapiResponse brapiResponse = new BrapiResponse();
         BrapiResponse.Result item = new BrapiResponse.Result();
-        item.setRegularMarketPrice(new BigDecimal("20")); item.setCurrency("BRL");
+        item.setRegularMarketPrice(new BigDecimal("20")); item.setCurrency("BRL"); item.setLongName("Petróleo Brasileiro S.A. - Petrobras"); item.setShortName("Petrobras");
         brapiResponse.setResults(List.of(item));
         when(brapi.consultarCotacao("PETR4", "fake-token")).thenReturn(brapiResponse);
-        assertThat(new BrapiStrategy(brapi, "fake-token").buscarCotacao("PETR4").getMoeda()).isEqualTo("BRL");
+        assertThat(new BrapiStrategy(brapi, "fake-token").buscarCotacao("PETR4").getNomeEmpresa()).isEqualTo("Petróleo Brasileiro S.A. - Petrobras");
 
         TwelveDataClient twelve = mock(TwelveDataClient.class);
-        TwelveDataResponse twelveResponse = new TwelveDataResponse(); twelveResponse.setPrice(new BigDecimal("100"));
+        TwelveDataResponse twelveResponse = new TwelveDataResponse(); twelveResponse.setPrice(new BigDecimal("100")); twelveResponse.setName("Apple Inc.");
         when(twelve.consultarCotacao("AAPL", "fake-key")).thenReturn(twelveResponse);
-        assertThat(new TwelveDataStrategy(twelve, "fake-key").buscarCotacao("AAPL").getPrecoAtual())
-                .isEqualByComparingTo("100");
+        assertThat(new TwelveDataStrategy(twelve, "fake-key").buscarCotacao("AAPL").getNomeEmpresa()).isEqualTo("Apple Inc.");
+    }
+
+    @Test
+    void usesTheBrazilianShortNameOnlyWhenLongNameIsUnavailable() {
+        BrapiClient brapi = mock(BrapiClient.class);
+        BrapiResponse.Result item = new BrapiResponse.Result();
+        item.setRegularMarketPrice(new BigDecimal("20")); item.setCurrency("BRL"); item.setShortName("Petrobras");
+        BrapiResponse response = new BrapiResponse(); response.setResults(List.of(item));
+        when(brapi.consultarCotacao("PETR4", "fake-token")).thenReturn(response);
+
+        assertThat(new BrapiStrategy(brapi, "fake-token").buscarCotacao("PETR4").getNomeEmpresa()).isEqualTo("Petrobras");
     }
 
     @Test
