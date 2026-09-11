@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="007-drop-legacy-global-broker-cnpj-constraint" author="atlas-carteira">
+        <preConditions onFail="MARK_RAN" onError="HALT">
+            <uniqueConstraintExists tableName="corretora" constraintName="uk_corretora_cnpj"/>
+        </preConditions>
+        <dropUniqueConstraint tableName="corretora" constraintName="uk_corretora_cnpj"/>
+        <rollback>
+            <sql>SELECT 1</sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

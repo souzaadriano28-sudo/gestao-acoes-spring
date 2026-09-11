@@ -6,6 +6,7 @@ import com.trabalho.gestao_acoes.domains.dtos.PosicaoDTO;
 import com.trabalho.gestao_acoes.repositories.AcaoRepository;
 import com.trabalho.gestao_acoes.repositories.CorretoraRepository;
 import com.trabalho.gestao_acoes.repositories.PosicaoCarteiraRepository;
+import com.trabalho.gestao_acoes.repositories.PortfolioRepository;
 import com.trabalho.gestao_acoes.services.exceptions.BusinessException;
 import com.trabalho.gestao_acoes.services.exceptions.NotFoundException;
 import com.trabalho.gestao_acoes.services.ports.CotacaoBolsa;
@@ -22,15 +23,20 @@ public class CarteiraService {
     private final CorretoraRepository brokers;
     private final CotacaoService quotes;
     private final CarteiraTransactionService transactionService;
+    private final PortfolioRepository portfolios;
+    private final SecurityUtils securityUtils;
 
     public CarteiraService(PosicaoCarteiraRepository positions, AcaoRepository assets,
                            CorretoraRepository brokers, CotacaoService quotes,
-                           CarteiraTransactionService transactionService) {
+                           CarteiraTransactionService transactionService, PortfolioRepository portfolios,
+                           SecurityUtils securityUtils) {
         this.positions = positions;
         this.assets = assets;
         this.brokers = brokers;
         this.quotes = quotes;
         this.transactionService = transactionService;
+        this.portfolios = portfolios;
+        this.securityUtils = securityUtils;
     }
 
     public void comprar(String tickerValue, String marketValue, Integer quantity, Long brokerId) {
@@ -47,7 +53,7 @@ public class CarteiraService {
 
     public BigDecimal calcularSaldoTotal() {
         BigDecimal total = BigDecimal.ZERO;
-        for (PosicaoCarteira position : positions.findAll()) {
+        for (PosicaoCarteira position : positions.findAllDetailed(defaultPortfolioId())) {
             CotacaoBolsa quote = quotes.buscar(position.getAcao().getTicker(), position.getAcao().getMercado());
             BigDecimal value = quote.getPrecoAtual().multiply(BigDecimal.valueOf(position.getQuantidadeTotal()));
             if ("USD".equals(position.getAcao().getMoeda())) value = value.multiply(FIXED_EXCHANGE_RATE);
@@ -57,7 +63,7 @@ public class CarteiraService {
     }
 
     public List<PosicaoDTO> listarPosicoes() {
-        return positions.findAll().stream().map(p -> new PosicaoDTO(p.getAcao().getTicker(),
+        return positions.findAllDetailed(defaultPortfolioId()).stream().map(p -> new PosicaoDTO(p.getAcao().getTicker(),
                 p.getCorretora().getRazaoSocial(), p.getQuantidadeTotal(), p.getPrecoMedio(), p.getAcao().getMoeda())).toList();
     }
 
@@ -68,11 +74,18 @@ public class CarteiraService {
         if (quantity == null || quantity <= 0 || brokerId == null || brokerId <= 0) {
             throw new BusinessException("VALIDATION_ERROR", "Quantidade e corretora devem ser positivas.");
         }
-        Acao asset = assets.findByTicker(ticker).orElseThrow(() -> new NotFoundException("Ação não encontrada."));
-        if (!brokers.existsById(brokerId)) throw new NotFoundException("Corretora não encontrada.");
+        Long ownerId = securityUtils.currentOwnerId();
+        Acao asset = assets.findByTickerAndOwnerId(ticker, ownerId).orElseThrow(() -> new NotFoundException("Ação não encontrada."));
+        if (brokers.findByIdAndOwnerId(brokerId, ownerId).isEmpty()) throw new NotFoundException("Corretora não encontrada.");
         if (!asset.getMercado().equals(market)) throw new BusinessException("MARKET_MISMATCH", "O mercado informado não corresponde ao ativo.");
         return new OperationData(asset);
     }
 
     private record OperationData(Acao asset) {}
+
+    private Long defaultPortfolioId() {
+        return portfolios.findFirstByOwnerIdOrderByIdAsc(securityUtils.currentOwnerId())
+                .orElseThrow(() -> new BusinessException("PORTFOLIO_NOT_FOUND", "Carteira padrão não encontrada."))
+                .getId();
+    }
 }

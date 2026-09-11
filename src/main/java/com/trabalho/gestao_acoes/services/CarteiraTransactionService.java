@@ -12,6 +12,14 @@ import com.trabalho.gestao_acoes.repositories.PosicaoCarteiraRepository;
 import com.trabalho.gestao_acoes.repositories.TransacaoRepository;
 import com.trabalho.gestao_acoes.services.exceptions.BusinessException;
 import com.trabalho.gestao_acoes.services.exceptions.NotFoundException;
+import com.trabalho.gestao_acoes.repositories.AcaoRepository;
+import com.trabalho.gestao_acoes.repositories.CorretoraRepository;
+import com.trabalho.gestao_acoes.repositories.PosicaoCarteiraRepository;
+import com.trabalho.gestao_acoes.repositories.TransacaoRepository;
+import com.trabalho.gestao_acoes.services.exceptions.BusinessException;
+import com.trabalho.gestao_acoes.services.exceptions.NotFoundException;
+import com.trabalho.gestao_acoes.services.SecurityUtils;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,23 +32,40 @@ public class CarteiraTransactionService {
     private final PosicaoCarteiraRepository positions;
     private final AcaoRepository assets;
     private final CorretoraRepository brokers;
+    private final com.trabalho.gestao_acoes.repositories.PortfolioRepository portfolios;
+    private final SecurityUtils securityUtils;
 
     public CarteiraTransactionService(TransacaoRepository transactions, PosicaoCarteiraRepository positions,
-                                      AcaoRepository assets, CorretoraRepository brokers) {
+                                      AcaoRepository assets, CorretoraRepository brokers,
+                                      com.trabalho.gestao_acoes.repositories.PortfolioRepository portfolios,
+                                      SecurityUtils securityUtils) {
         this.transactions = transactions;
         this.positions = positions;
         this.assets = assets;
         this.brokers = brokers;
+        this.portfolios = portfolios;
+        this.securityUtils = securityUtils;
+    }
+
+    private com.trabalho.gestao_acoes.domains.Portfolio defaultPortfolio(Long ownerId) {
+        return portfolios.findFirstByOwnerIdOrderByIdAsc(ownerId)
+                .orElseThrow(() -> new BusinessException("PORTFOLIO_NOT_FOUND", "Carteira padrão não encontrada."));
     }
 
     @Transactional
     public void comprar(Long assetId, Long brokerId, int quantity, BigDecimal price) {
         validateMutation(assetId, brokerId, quantity);
         price = MoneyPolicy.quote(price);
-        Corretora broker = lockBroker(brokerId);
-        Acao asset = assets.findById(assetId).orElseThrow(() -> new NotFoundException("Ação não encontrada."));
-        PosicaoCarteira position = positions.findByAcaoIdAndCorretoraId(assetId, brokerId)
-                .orElse(new PosicaoCarteira(null, 0, BigDecimal.ZERO.setScale(MoneyPolicy.PRICE_SCALE), asset, broker));
+        Long ownerId = securityUtils.currentOwnerId();
+        com.trabalho.gestao_acoes.domains.Portfolio portfolio = defaultPortfolio(ownerId);
+        Corretora broker = lockBroker(brokerId, ownerId);
+        Acao asset = assets.findByIdAndOwnerId(assetId, ownerId).orElseThrow(() -> new NotFoundException("Ação não encontrada."));
+        PosicaoCarteira position = positions.findByAcaoIdAndCorretoraIdAndPortfolioId(assetId, brokerId, portfolio.getId())
+                .orElseGet(() -> {
+                    PosicaoCarteira p = new PosicaoCarteira(null, 0, BigDecimal.ZERO.setScale(MoneyPolicy.PRICE_SCALE), asset, broker);
+                    p.setPortfolio(portfolio);
+                    return p;
+                });
         int total;
         try {
             total = Math.addExact(position.getQuantidadeTotal(), quantity);
@@ -49,7 +74,9 @@ public class CarteiraTransactionService {
         }
         position.setPrecoMedio(MoneyPolicy.average(position.getPrecoMedio(), position.getQuantidadeTotal(), price, quantity, total));
         position.setQuantidadeTotal(total);
-        transactions.save(new Transacao(null, TipoTransacao.COMPRA, quantity, price, LocalDateTime.now(), asset, broker));
+        Transacao tx = new Transacao(null, TipoTransacao.COMPRA, quantity, price, LocalDateTime.now(), asset, broker);
+        tx.setPortfolio(portfolio);
+        transactions.save(tx);
         positions.save(position);
     }
 
@@ -57,15 +84,19 @@ public class CarteiraTransactionService {
     public void vender(Long assetId, Long brokerId, int quantity, BigDecimal price) {
         validateMutation(assetId, brokerId, quantity);
         price = MoneyPolicy.quote(price);
-        Corretora broker = lockBroker(brokerId);
-        Acao asset = assets.findById(assetId).orElseThrow(() -> new NotFoundException("Ação não encontrada."));
-        PosicaoCarteira position = positions.findByAcaoIdAndCorretoraId(assetId, brokerId)
+        Long ownerId = securityUtils.currentOwnerId();
+        com.trabalho.gestao_acoes.domains.Portfolio portfolio = defaultPortfolio(ownerId);
+        Corretora broker = lockBroker(brokerId, ownerId);
+        Acao asset = assets.findByIdAndOwnerId(assetId, ownerId).orElseThrow(() -> new NotFoundException("Ação não encontrada."));
+        PosicaoCarteira position = positions.findByAcaoIdAndCorretoraIdAndPortfolioId(assetId, brokerId, portfolio.getId())
                 .orElseThrow(() -> new BusinessException("INSUFFICIENT_POSITION", "Você não possui este ativo nesta corretora."));
         if (position.getQuantidadeTotal() < quantity) {
             throw new BusinessException("INSUFFICIENT_POSITION", "Quantidade disponível insuficiente para a venda.");
         }
         int remaining = position.getQuantidadeTotal() - quantity;
-        transactions.save(new Transacao(null, TipoTransacao.VENDA, quantity, price, LocalDateTime.now(), asset, broker));
+        Transacao tx = new Transacao(null, TipoTransacao.VENDA, quantity, price, LocalDateTime.now(), asset, broker);
+        tx.setPortfolio(portfolio);
+        transactions.save(tx);
         if (remaining == 0) positions.delete(position);
         else {
             position.setQuantidadeTotal(remaining);
@@ -73,8 +104,8 @@ public class CarteiraTransactionService {
         }
     }
 
-    private Corretora lockBroker(Long id) {
-        Corretora broker = brokers.findByIdForUpdate(id).orElseThrow(() -> new NotFoundException("Corretora não encontrada."));
+    private Corretora lockBroker(Long id, Long ownerId) {
+        Corretora broker = brokers.findByIdAndOwnerIdForUpdate(id, ownerId).orElseThrow(() -> new NotFoundException("Corretora não encontrada."));
         if (broker.getRegulatoryStatus() != RegulatoryStatus.VERIFIED) {
             throw new BusinessException("BROKER_UNAVAILABLE", "A corretora não possui autorização regulatória válida para novas operações.");
         }

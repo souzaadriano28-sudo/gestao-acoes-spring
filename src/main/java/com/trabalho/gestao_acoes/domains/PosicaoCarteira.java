@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.util.Objects;
 
 @Entity
-@Table(name = "posicao_carteira", uniqueConstraints = @UniqueConstraint(name = "uk_posicao_acao_corretora", columnNames = {"acao_id", "corretora_id"}))
+@Table(name = "posicao_carteira", uniqueConstraints = @UniqueConstraint(name = "uk_posicao_acao_corretora_portfolio", columnNames = {"acao_id", "corretora_id", "portfolio_id"}))
 @Check(constraints = "quantidade_total > 0 and preco_medio > 0")
 public class PosicaoCarteira implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -29,6 +29,11 @@ public class PosicaoCarteira implements Serializable {
     @ManyToOne
     @JoinColumn(name = "corretora_id", nullable = false)
     private Corretora corretora;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "portfolio_id", nullable = false)
+    private Portfolio portfolio;
+
 
     public PosicaoCarteira() {
     }
@@ -55,6 +60,9 @@ public class PosicaoCarteira implements Serializable {
 
     public Corretora getCorretora() { return corretora; }
     public void setCorretora(Corretora corretora) { this.corretora = corretora; }
+
+    public Portfolio getPortfolio() { return portfolio; }
+    public void setPortfolio(Portfolio portfolio) { this.portfolio = portfolio; }
 
     @Override
     public boolean equals(Object o) {

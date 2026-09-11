@@ -10,16 +10,22 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface TransacaoRepository extends JpaRepository<Transacao, Long> {
     @EntityGraph(attributePaths = {"acao", "corretora"})
-    @Query("select t from Transacao t where (:type is null or t.tipo = :type) " +
+    @Query("select t from Transacao t where t.portfolio.id = :portfolioId " +
+            "and (:type is null or t.tipo = :type) " +
             "and (:ticker is null or t.acao.ticker = :ticker) " +
             "and (:brokerId is null or t.corretora.id = :brokerId) " +
             "and t.dataHora >= coalesce(:fromDate, t.dataHora) " +
             "and t.dataHora <= coalesce(:toDate, t.dataHora)")
-    Page<Transacao> findMovements(@Param("type") TipoTransacao type, @Param("ticker") String ticker,
+    Page<Transacao> findMovements(@Param("portfolioId") Long portfolioId, @Param("type") TipoTransacao type, @Param("ticker") String ticker,
             @Param("brokerId") Long brokerId, @Param("fromDate") LocalDateTime fromDate,
             @Param("toDate") LocalDateTime toDate, Pageable pageable);
+
+    List<Transacao> findAllByPortfolioId(Long portfolioId);
+    Optional<Transacao> findByIdAndPortfolioId(Long id, Long portfolioId);
 }

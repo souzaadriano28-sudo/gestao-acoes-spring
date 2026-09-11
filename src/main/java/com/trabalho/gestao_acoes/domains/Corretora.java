@@ -16,7 +16,12 @@ public class Corretora implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 14)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private UserAccount owner;
+
+
+    @Column(nullable = false, length = 14)
     private String cnpj;
 
     @Column(nullable = false)
@@ -79,6 +84,9 @@ public class Corretora implements Serializable {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public UserAccount getOwner() { return owner; }
+    public void setOwner(UserAccount owner) { this.owner = owner; }
 
     public String getCnpj() { return cnpj; }
     public void setCnpj(String cnpj) { this.cnpj = cnpj; }

@@ -16,9 +16,13 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import feign.FeignException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class RegulatoryVerificationService {
+    private static final Logger log = LoggerFactory.getLogger(RegulatoryVerificationService.class);
     static final String ACTIVE = "EM FUNCIONAMENTO NORMAL";
     private final RegulatoryRegistryPort registry;
     private final Clock clock;
@@ -52,6 +56,12 @@ public class RegulatoryVerificationService {
             cached.set(snapshot);
             return snapshot;
         } catch (RuntimeException failure) {
+            if (failure instanceof FeignException feign) {
+                log.warn("CVM registry load failed: http_status={}", feign.status(), failure);
+            } else {
+                log.warn("CVM registry load failed: exception_type={} reason={}", failure.getClass().getSimpleName(),
+                        sanitizedReason(failure), failure);
+            }
             RegulatoryRegistrySnapshot snapshot = cached.get();
             if (snapshot != null && isFresh(snapshot)) return snapshot;
             throw new UpstreamUnavailableException("A consulta ao cadastro oficial da CVM está temporariamente indisponível. Tente novamente mais tarde.");
@@ -102,6 +112,14 @@ public class RegulatoryVerificationService {
     }
 
     private static String canonical(String value) { return value.trim().toUpperCase(Locale.ROOT); }
+    private static String sanitizedReason(Throwable failure) {
+        Throwable root = failure;
+        while (root.getCause() != null) root = root.getCause();
+        String message = root.getMessage();
+        if (message == null) return "unspecified";
+        String sanitized = message.replaceAll("[\\r\\n]", " ");
+        return sanitized.substring(0, Math.min(sanitized.length(), 160));
+    }
 
     public record Decision(RegulatoryStatus status, String category, String source, String evidenceId,
             Instant referenceAt, Instant checkedAt, String reason) {

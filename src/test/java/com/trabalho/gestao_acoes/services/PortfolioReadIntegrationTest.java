@@ -24,14 +24,27 @@ class PortfolioReadIntegrationTest {
     @Autowired private CorretoraRepository brokers;
     @Autowired private PosicaoCarteiraRepository positions;
     @Autowired private TransacaoRepository transactions;
+    @Autowired private com.trabalho.gestao_acoes.repositories.UserAccountRepository users;
+    @Autowired private com.trabalho.gestao_acoes.repositories.PortfolioRepository portfolios;
     @MockitoBean private ExchangeRatePort exchangeRates;
+    @MockitoBean private SecurityUtils securityUtils;
+
+    private com.trabalho.gestao_acoes.domains.UserAccount user;
+    private com.trabalho.gestao_acoes.domains.Portfolio defaultPortfolio;
 
     @BeforeEach void clean() {
         transactions.deleteAll();
         positions.deleteAll();
         assets.deleteAll();
         brokers.deleteAll();
+        portfolios.deleteAll();
+        users.deleteAll();
         reset(exchangeRates);
+
+        user = users.save(new com.trabalho.gestao_acoes.domains.UserAccount("testuser", "test@user.com", "pass", Instant.now()));
+        defaultPortfolio = portfolios.save(new com.trabalho.gestao_acoes.domains.Portfolio("Principal", user, Instant.now()));
+        when(securityUtils.currentUser()).thenReturn(user);
+        when(securityUtils.currentOwnerId()).thenReturn(user.getId());
     }
 
     @Test void emptyPortfolioIsAConfirmedSuccessfulRead() {
@@ -45,9 +58,18 @@ class PortfolioReadIntegrationTest {
         Instant now = Instant.now();
         Corretora broker = brokers.save(broker("11222333000181", "Corretora Um"));
         Acao asset = assets.save(asset("PETR4", "BRASIL", "BRL", "22.50", now.minusSeconds(60), true));
-        positions.save(new PosicaoCarteira(null, 4, new BigDecimal("20.00"), asset, broker));
-        transactions.save(new Transacao(null, TipoTransacao.COMPRA, 2, new BigDecimal("19.00"), LocalDateTime.now().minusDays(1), asset, broker));
-        Transacao newest = transactions.save(new Transacao(null, TipoTransacao.COMPRA, 2, new BigDecimal("21.00"), LocalDateTime.now(), asset, broker));
+
+        PosicaoCarteira pos = new PosicaoCarteira(null, 4, new BigDecimal("20.00"), asset, broker);
+        pos.setPortfolio(defaultPortfolio);
+        positions.save(pos);
+
+        Transacao tx1 = new Transacao(null, TipoTransacao.COMPRA, 2, new BigDecimal("19.00"), LocalDateTime.now().minusDays(1), asset, broker);
+        tx1.setPortfolio(defaultPortfolio);
+        transactions.save(tx1);
+
+        Transacao tx2 = new Transacao(null, TipoTransacao.COMPRA, 2, new BigDecimal("21.00"), LocalDateTime.now(), asset, broker);
+        tx2.setPortfolio(defaultPortfolio);
+        Transacao newest = transactions.save(tx2);
 
         var dashboard = service.dashboard();
         var movements = service.movements(0, 10, "COMPRA", "PETR4", broker.getId(), null, null);
@@ -66,7 +88,10 @@ class PortfolioReadIntegrationTest {
         Instant now = Instant.now();
         Corretora broker = brokers.save(broker("22333444000181", "Corretora Dois"));
         Acao asset = assets.save(asset("VALE3", "BRASIL", "BRL", "60.00", now, false));
-        positions.save(new PosicaoCarteira(null, 3, new BigDecimal("55.00"), asset, broker));
+
+        PosicaoCarteira pos = new PosicaoCarteira(null, 3, new BigDecimal("55.00"), asset, broker);
+        pos.setPortfolio(defaultPortfolio);
+        positions.save(pos);
 
         var dashboard = service.dashboard();
         assertThat(dashboard.positions().get(0).quantity()).isEqualTo(3);
@@ -79,7 +104,11 @@ class PortfolioReadIntegrationTest {
         Instant now = Instant.now();
         Corretora broker = brokers.save(broker("33444555000181", "Corretora Três"));
         Acao asset = assets.save(asset("AAPL", "AMERICANO", "USD", "100.00", now.minusSeconds(60), true));
-        positions.save(new PosicaoCarteira(null, 2, new BigDecimal("90.00"), asset, broker));
+
+        PosicaoCarteira pos = new PosicaoCarteira(null, 2, new BigDecimal("90.00"), asset, broker);
+        pos.setPortfolio(defaultPortfolio);
+        positions.save(pos);
+
         when(exchangeRates.find("USD", "BRL")).thenReturn(Optional.empty());
 
         var dashboard = service.dashboard();
@@ -94,27 +123,36 @@ class PortfolioReadIntegrationTest {
         Acao asset = assets.save(asset("ITUB4", "BRASIL", "BRL", "35.00", now.minusSeconds(60), true));
         Corretora first = brokers.save(broker("44555666000181", "Alfa"));
         Corretora second = brokers.save(broker("55666777000181", "Beta"));
-        positions.save(new PosicaoCarteira(null, 1, new BigDecimal("30.00"), asset, first));
-        positions.save(new PosicaoCarteira(null, 2, new BigDecimal("31.00"), asset, second));
+
+        PosicaoCarteira pos1 = new PosicaoCarteira(null, 1, new BigDecimal("30.00"), asset, first);
+        pos1.setPortfolio(defaultPortfolio);
+        positions.save(pos1);
+
+        PosicaoCarteira pos2 = new PosicaoCarteira(null, 2, new BigDecimal("31.00"), asset, second);
+        pos2.setPortfolio(defaultPortfolio);
+        positions.save(pos2);
 
         var page = service.detailedPositions(0, 20, "BRASIL", null);
         assertThat(page.items()).hasSize(2).extracting(item -> item.brokerName()).containsExactly("Alfa", "Beta");
         assertThat(page.items()).extracting(item -> item.ticker()).containsOnly("ITUB4");
     }
 
-    private static Acao asset(String ticker, String market, String currency, String quote, Instant reference, boolean provenance) {
+    private Acao asset(String ticker, String market, String currency, String quote, Instant reference, boolean provenance) {
         Acao asset = new Acao(null, ticker, ticker, market, currency, new BigDecimal(quote), LocalDateTime.now());
         if (provenance) {
             asset.setQuoteSourceType("MARKET_DATA_PROVIDER"); asset.setQuoteProvider("INTEGRATION_FIXTURE");
             asset.setQuoteReferenceAt(reference); asset.setQuoteFetchedAt(reference); asset.setQuoteReferenceKind("PROVIDER_REFERENCE_TIME");
         }
+        asset.setOwner(user);
         return asset;
     }
 
-    private static Corretora broker(String cnpj, String name) {
+    private Corretora broker(String cnpj, String name) {
         Corretora broker = new Corretora();
         broker.setCnpj(cnpj); broker.setRazaoSocial(name); broker.setCep("01001000");
         broker.setValidadaNaCvm(false); broker.setDataCadastro(LocalDateTime.now());
+        broker.setOwner(user);
         return broker;
     }
+
 }

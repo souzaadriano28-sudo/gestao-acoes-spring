@@ -30,6 +30,8 @@ public class PortfolioReadService {
     private static final Sort MOVEMENT_SORT = Sort.by("dataHora").descending().and(Sort.by("id").descending());
     private final PosicaoCarteiraRepository positions;
     private final TransacaoRepository transactions;
+    private final com.trabalho.gestao_acoes.repositories.PortfolioRepository portfolios;
+    private final SecurityUtils securityUtils;
     private final ExchangeRatePort exchangeRates;
     private final Clock clock;
     private final Duration quoteFreshness;
@@ -37,12 +39,15 @@ public class PortfolioReadService {
     private final ZoneId legacyZone;
 
     public PortfolioReadService(PosicaoCarteiraRepository positions, TransacaoRepository transactions,
+            com.trabalho.gestao_acoes.repositories.PortfolioRepository portfolios, SecurityUtils securityUtils,
             ExchangeRatePort exchangeRates, Clock clock,
             @Value("${app.portfolio.quote-freshness:PT30M}") Duration quoteFreshness,
             @Value("${app.portfolio.exchange-freshness:PT36H}") Duration exchangeFreshness,
             @Value("${app.portfolio.legacy-server-zone:America/Sao_Paulo}") String legacyZone) {
         this.positions = positions;
         this.transactions = transactions;
+        this.portfolios = portfolios;
+        this.securityUtils = securityUtils;
         this.exchangeRates = exchangeRates;
         this.clock = clock;
         this.quoteFreshness = positive(quoteFreshness, "quote freshness");
@@ -50,11 +55,16 @@ public class PortfolioReadService {
         this.legacyZone = ZoneId.of(legacyZone);
     }
 
+    private Long defaultPortfolioId() {
+        return portfolios.findFirstByOwnerIdOrderByIdAsc(securityUtils.currentOwnerId())
+                .orElseThrow(() -> new BusinessException("PORTFOLIO_NOT_FOUND", "Carteira padrão não encontrada.")).getId();
+    }
+
     public PageDTO<DetailedPositionDTO> detailedPositions(int page, int size, String market, Long brokerId) {
         validatePage(page, size);
         String canonicalMarket = market == null || market.isBlank() ? null : Identifiers.mercado(market);
         if (brokerId != null && brokerId <= 0) throw validation("Corretora deve ser positiva.");
-        Page<DetailedPositionDTO> result = positions.findDetailed(canonicalMarket, brokerId, PageRequest.of(page, size, POSITION_SORT)).map(this::position);
+        Page<DetailedPositionDTO> result = positions.findDetailed(defaultPortfolioId(), canonicalMarket, brokerId, PageRequest.of(page, size, POSITION_SORT)).map(this::position);
         return PageDTO.from(result);
     }
 
@@ -67,16 +77,17 @@ public class PortfolioReadService {
         if (from != null && to != null && from.isAfter(to)) throw validation("Período inicial deve anteceder o final.");
         LocalDateTime localFrom = from == null ? null : from.atZoneSameInstant(legacyZone).toLocalDateTime();
         LocalDateTime localTo = to == null ? null : to.atZoneSameInstant(legacyZone).toLocalDateTime();
-        return PageDTO.from(transactions.findMovements(parsedType, canonicalTicker, brokerId, localFrom, localTo,
+        return PageDTO.from(transactions.findMovements(defaultPortfolioId(), parsedType, canonicalTicker, brokerId, localFrom, localTo,
                 PageRequest.of(page, size, MOVEMENT_SORT)).map(this::movement));
     }
 
     @Transactional
     public DashboardDTO dashboard() {
         Instant asOf = clock.instant();
-        List<PosicaoCarteira> entities = positions.findAllDetailed();
+        Long portfolioId = defaultPortfolioId();
+        List<PosicaoCarteira> entities = positions.findAllDetailed(portfolioId);
         List<DetailedPositionDTO> details = entities.stream().map(this::position).toList();
-        List<MovementDTO> recent = transactions.findMovements(null, null, null, null, null,
+        List<MovementDTO> recent = transactions.findMovements(portfolioId, null, null, null, null, null,
                 PageRequest.of(0, 5, MOVEMENT_SORT)).map(this::movement).getContent();
         if (entities.isEmpty()) {
             MoneyMetricDTO zero = MoneyMetricDTO.available(new BigDecimal("0.00"), PRESENTATION_CURRENCY);
@@ -84,6 +95,7 @@ public class PortfolioReadService {
                     PercentageMetricDTO.unavailable("RESULT_PERCENTAGE_NOT_APPLICABLE_TO_EMPTY_PORTFOLIO"),
                     details, recent, List.of(), unavailableExchange("NOT_REQUIRED_FOR_EMPTY_PORTFOLIO"));
         }
+
 
         boolean needsUsd = entities.stream().anyMatch(p -> "USD".equals(p.getAcao().getMoeda()));
         ExchangeState exchange = exchangeState(needsUsd);

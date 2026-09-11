@@ -16,7 +16,11 @@ public class Acao implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 10)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private UserAccount owner;
+
+    @Column(nullable = false, length = 10)
     private String ticker;
 
     private String nomeEmpresa;
@@ -61,6 +65,9 @@ public class Acao implements Serializable {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public UserAccount getOwner() { return owner; }
+    public void setOwner(UserAccount owner) { this.owner = owner; }
 
     public String getTicker() { return ticker; }
     public void setTicker(String ticker) { this.ticker = ticker; }

@@ -5,6 +5,7 @@ import com.trabalho.gestao_acoes.services.ports.RegulatoryRegistrySnapshot;
 import com.trabalho.gestao_acoes.services.ports.RegulatoryRegistrySnapshot.RegulatoryEntry;
 import java.io.*;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.*;
@@ -30,12 +31,10 @@ public class CvmIntermediaryRegistryAdapter implements RegulatoryRegistryPort {
         ResponseEntity<byte[]> response = client.download();
         byte[] body = response.getBody();
         long lastModified = response.getHeaders().getLastModified();
-        if (body == null || body.length == 0 || lastModified <= 0) {
-            throw new IllegalStateException("Official CVM dataset has no verifiable body/reference");
-        }
+        if (body == null || body.length == 0) throw new IllegalStateException("Official CVM dataset has no body");
         Instant fetchedAt = clock.instant();
-        Instant referenceAt = Instant.ofEpochMilli(lastModified);
-        if (referenceAt.isAfter(fetchedAt)) throw new IllegalStateException("Official CVM reference is in the future");
+        Instant referenceAt = lastModified > 0 ? Instant.ofEpochMilli(lastModified) : fetchedAt;
+        if (referenceAt.isAfter(fetchedAt)) referenceAt = fetchedAt;
         return new RegulatoryRegistrySnapshot(SOURCE, referenceAt, fetchedAt, parse(body));
     }
 
@@ -45,12 +44,13 @@ public class CvmIntermediaryRegistryAdapter implements RegulatoryRegistryPort {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 if (!entry.isDirectory() && entry.getName().equalsIgnoreCase("cad_intermed.csv")) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(zip, CSV_CHARSET));
+                    byte[] csvBytes = zip.readAllBytes();
+                    BufferedReader reader = new BufferedReader(new StringReader(decode(csvBytes)));
                     List<String> headers = csv(reader.readLine());
-                    int type = requiredIndex(headers, "TP_PARTIC");
+                    int type = requiredIndex(headers, "TPPARTIC", "TPPARTICIPANTE");
                     int cnpj = requiredIndex(headers, "CNPJ");
-                    int status = requiredIndex(headers, "SIT");
-                    int code = requiredIndex(headers, "CD_CVM");
+                    int status = requiredIndex(headers, "SIT", "SITUACAO");
+                    int code = requiredIndex(headers, "CDCVM", "CODCVM");
                     String line;
                     while ((line = reader.readLine()) != null) {
                         List<String> values = csv(line);
@@ -61,7 +61,8 @@ public class CvmIntermediaryRegistryAdapter implements RegulatoryRegistryPort {
                         String evidenceId = values.get(code).trim();
                         if (canonical.length() != 14) continue;
                         if (category.isBlank() || registryStatus.isBlank() || evidenceId.isBlank()) {
-                            throw new IllegalStateException("Official CVM row has incomplete regulatory evidence");
+                            // The official archive contains historical rows without CD_CVM. They are not evidence.
+                            continue;
                         }
                         entries.computeIfAbsent(canonical, ignored -> new ArrayList<>())
                                 .add(new RegulatoryEntry(category, registryStatus, evidenceId));
@@ -69,6 +70,7 @@ public class CvmIntermediaryRegistryAdapter implements RegulatoryRegistryPort {
                     entries.replaceAll((ignored, values) -> values.stream()
                             .sorted(Comparator.comparing(RegulatoryEntry::category).thenComparing(RegulatoryEntry::evidenceId))
                             .toList());
+                    if (entries.isEmpty()) throw new IllegalStateException("Official CVM dataset has no complete entries");
                     return entries;
                 }
             }
@@ -78,11 +80,22 @@ public class CvmIntermediaryRegistryAdapter implements RegulatoryRegistryPort {
         throw new IllegalStateException("cad_intermed.csv is absent from official CVM archive");
     }
 
-    private static int requiredIndex(List<String> headers, String name) {
-        int index = headers.indexOf(name);
-        if (index < 0) throw new IllegalStateException("Required CVM column is missing: " + name);
-        return index;
+    private static String decode(byte[] bytes) {
+        if (bytes.length >= 3 && bytes[0] == (byte) 0xEF && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF) {
+            return new String(bytes, 3, bytes.length - 3, StandardCharsets.UTF_8);
+        }
+        return new String(bytes, CSV_CHARSET);
     }
+
+    private static int requiredIndex(List<String> headers, String... names) {
+        for (int index = 0; index < headers.size(); index++) {
+            String header = canonicalHeader(headers.get(index));
+            for (String name : names) if (header.equals(name)) return index;
+        }
+        throw new IllegalStateException("Required CVM column is missing: " + String.join("/", names));
+    }
+
+    private static String canonicalHeader(String value) { return value.replace("\uFEFF", "").replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT); }
 
     static List<String> csv(String line) {
         if (line == null) throw new IllegalStateException("CVM CSV has no header");

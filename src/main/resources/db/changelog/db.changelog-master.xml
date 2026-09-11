@@ -9,4 +9,6 @@
     <include file="db/changelog/changes/003-portfolio-read-model.xml"/>
     <include file="db/changelog/changes/004-trustworthy-integrations.xml"/>
     <include file="db/changelog/changes/005-broker-registration-workflow.xml"/>
+    <include file="db/changelog/changes/006-secure-multi-user-ownership.xml"/>
+    <include file="db/changelog/changes/007-correct-broker-cnpj-ownership.xml"/>
 </databaseChangeLog>

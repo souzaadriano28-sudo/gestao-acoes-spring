@@ -6,6 +6,7 @@ import com.trabalho.gestao_acoes.domains.PosicaoCarteira;
 import com.trabalho.gestao_acoes.repositories.AcaoRepository;
 import com.trabalho.gestao_acoes.repositories.CorretoraRepository;
 import com.trabalho.gestao_acoes.repositories.PosicaoCarteiraRepository;
+import com.trabalho.gestao_acoes.repositories.PortfolioRepository;
 import com.trabalho.gestao_acoes.services.exceptions.BusinessException;
 import com.trabalho.gestao_acoes.services.exceptions.NotFoundException;
 import com.trabalho.gestao_acoes.services.ports.CotacaoBolsa;
@@ -27,10 +28,18 @@ class CarteiraServiceTest {
     private final CorretoraRepository brokers = mock(CorretoraRepository.class);
     private final CotacaoService quotes = mock(CotacaoService.class);
     private final CarteiraTransactionService transactions = mock(CarteiraTransactionService.class);
+    private final PortfolioRepository portfolios = mock(PortfolioRepository.class);
+    private final SecurityUtils securityUtils = mock(SecurityUtils.class);
     private CarteiraService service;
 
     @BeforeEach
-    void setUp() { service = new CarteiraService(positions, assets, brokers, quotes, transactions); }
+    void setUp() {
+        service = new CarteiraService(positions, assets, brokers, quotes, transactions, portfolios, securityUtils);
+        var portfolio = mock(com.trabalho.gestao_acoes.domains.Portfolio.class);
+        when(portfolio.getId()).thenReturn(7L);
+        when(securityUtils.currentOwnerId()).thenReturn(2L);
+        when(portfolios.findFirstByOwnerIdOrderByIdAsc(2L)).thenReturn(Optional.of(portfolio));
+    }
 
     @Test
     void rejectsInvalidBusinessInputBeforeRepositoriesOrExternalQuotes() {
@@ -41,15 +50,15 @@ class CarteiraServiceTest {
 
     @Test
     void rejectsMissingReferencesAndMarketMismatchBeforeExternalQuote() {
-        when(assets.findByTicker("PETR4")).thenReturn(Optional.empty());
+        when(assets.findByTickerAndOwnerId("PETR4", 2L)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.comprar("PETR4", "BRASIL", 1, 1L))
                 .isInstanceOf(NotFoundException.class);
         verifyNoInteractions(quotes);
 
         reset(assets, brokers);
         Acao asset = asset("AAPL", "BRASIL", "BRL");
-        when(assets.findByTicker("AAPL")).thenReturn(Optional.of(asset));
-        when(brokers.existsById(1L)).thenReturn(true);
+        when(assets.findByTickerAndOwnerId("AAPL", 2L)).thenReturn(Optional.of(asset));
+        when(brokers.findByIdAndOwnerId(1L, 2L)).thenReturn(Optional.of(new Corretora()));
         assertThatThrownBy(() -> service.comprar("AAPL", "AMERICANO", 1, 1L))
                 .isInstanceOf(BusinessException.class);
         verifyNoInteractions(quotes);
@@ -58,8 +67,8 @@ class CarteiraServiceTest {
     @Test
     void resolvesBothCanonicalMarketsAndQuotesBeforeDelegatingTheTransaction() {
         Acao asset = asset("AAPL", "AMERICANO", "USD");
-        when(assets.findByTicker("AAPL")).thenReturn(Optional.of(asset));
-        when(brokers.existsById(7L)).thenReturn(true);
+        when(assets.findByTickerAndOwnerId("AAPL", 2L)).thenReturn(Optional.of(asset));
+        when(brokers.findByIdAndOwnerId(7L, 2L)).thenReturn(Optional.of(new Corretora()));
         when(quotes.buscar("AAPL", "AMERICANO"))
                 .thenReturn(new CotacaoBolsa(new BigDecimal("100.00000000"), "USD"));
 
@@ -75,13 +84,27 @@ class CarteiraServiceTest {
         Acao petr4 = asset("PETR4", "BRASIL", "BRL");
         Acao aapl = asset("AAPL", "AMERICANO", "USD");
         Corretora broker = new Corretora(); broker.setRazaoSocial("Teste");
-        when(positions.findAll()).thenReturn(List.of(
+        when(positions.findAllDetailed(7L)).thenReturn(List.of(
                 new PosicaoCarteira(1L, 6, new BigDecimal("20"), petr4, broker),
                 new PosicaoCarteira(2L, 2, new BigDecimal("100"), aapl, broker)));
         when(quotes.buscar("PETR4", "BRASIL")).thenReturn(new CotacaoBolsa(new BigDecimal("20"), "BRL"));
         when(quotes.buscar("AAPL", "AMERICANO")).thenReturn(new CotacaoBolsa(new BigDecimal("100"), "USD"));
 
         assertThat(service.calcularSaldoTotal()).isEqualByComparingTo("1180.00");
+        verify(positions, never()).findAll();
+    }
+
+    @Test
+    void rejectsForeignAssetAndBrokerWithoutUnscopedRepositoryLookup() {
+        when(assets.findByTickerAndOwnerId("PETR4", 2L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.comprar("PETR4", "BRASIL", 1, 99L))
+                .isInstanceOf(NotFoundException.class);
+
+        verify(assets).findByTickerAndOwnerId("PETR4", 2L);
+        verify(brokers, never()).existsById(anyLong());
+        verify(brokers, never()).findById(anyLong());
+        verifyNoInteractions(quotes, transactions);
     }
 
     private static Acao asset(String ticker, String market, String currency) {

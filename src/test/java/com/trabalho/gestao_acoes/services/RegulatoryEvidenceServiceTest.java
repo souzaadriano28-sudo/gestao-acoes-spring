@@ -20,18 +20,20 @@ class RegulatoryEvidenceServiceTest {
         Corretora inactive = broker("11444777000161", RegulatoryStatus.VERIFIED);
         Corretora incompatible = broker("19131243000197", RegulatoryStatus.VERIFIED);
         CorretoraRepository repository = mock(CorretoraRepository.class); RegulatoryRegistryPort registry = mock(RegulatoryRegistryPort.class);
-        when(repository.findAll()).thenReturn(List.of(verified, inactive, incompatible));
+        SecurityUtils securityUtils = mock(SecurityUtils.class); when(securityUtils.currentOwnerId()).thenReturn(7L);
+        when(repository.findAllByOwnerId(7L)).thenReturn(List.of(verified, inactive, incompatible));
         when(registry.load()).thenReturn(snapshot(Map.of(
                 verified.getCnpj(), List.of(entry("CORRETORAS", "EM FUNCIONAMENTO NORMAL")),
                 inactive.getCnpj(), List.of(entry("CORRETORAS", "CANCELADA")),
                 incompatible.getCnpj(), List.of(entry("CUSTODIANTES DE VALORES MOBILIÁRIOS", "EM FUNCIONAMENTO NORMAL")))));
         RegulatoryVerificationService verification = verifier(registry, Duration.ofDays(7));
-        new RegulatoryEvidenceService(repository, verification, Clock.fixed(NOW, ZoneOffset.UTC)).refreshAll();
+        new RegulatoryEvidenceService(repository, verification, Clock.fixed(NOW, ZoneOffset.UTC), securityUtils).refreshAll();
         assertThat(verified.getRegulatoryStatus()).isEqualTo(RegulatoryStatus.VERIFIED);
         assertThat(inactive.getRegulatoryStatus()).isEqualTo(RegulatoryStatus.INACTIVE);
         assertThat(incompatible.getRegulatoryStatus()).isEqualTo(RegulatoryStatus.INCOMPATIBLE);
         assertThat(repository.count()).isZero();
         verify(repository).saveAll(List.of(verified, inactive, incompatible)); verify(repository, never()).delete(any());
+        verify(repository, never()).findAll();
     }
 
     @Test

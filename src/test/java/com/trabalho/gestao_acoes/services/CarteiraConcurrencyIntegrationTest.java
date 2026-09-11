@@ -77,6 +77,12 @@ class CarteiraConcurrencyIntegrationTest {
             dataSource.setPassword("");
             return dataSource;
         }
+
+        @Bean
+        @org.springframework.context.annotation.Primary
+        SecurityUtils securityUtils() {
+            return org.mockito.Mockito.mock(SecurityUtils.class);
+        }
     }
 
     @Autowired private CarteiraTransactionService service;
@@ -85,13 +91,20 @@ class CarteiraConcurrencyIntegrationTest {
     @Autowired private PosicaoCarteiraRepository positions;
     @Autowired private TransacaoRepository transactions;
     @Autowired private ExchangeRateSnapshotRepository exchangeRates;
+    @Autowired private com.trabalho.gestao_acoes.repositories.UserAccountRepository users;
+    @Autowired private com.trabalho.gestao_acoes.repositories.PortfolioRepository portfolios;
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private DataSource dataSource;
     @Autowired private liquibase.integration.spring.SpringLiquibase liquibase;
 
+    @Autowired private SecurityUtils securityUtils;
+
+
     private ExecutorService executor;
     private Acao asset;
     private Corretora broker;
+    private com.trabalho.gestao_acoes.domains.Portfolio defaultPortfolio;
+    private com.trabalho.gestao_acoes.domains.UserAccount user;
 
     @BeforeEach
     void setUp() {
@@ -100,13 +113,25 @@ class CarteiraConcurrencyIntegrationTest {
         positions.deleteAll();
         assets.deleteAll();
         brokers.deleteAll();
-        asset = assets.save(new Acao(null, "PETR4", "Petrobras", "BRASIL", "BRL",
-                new BigDecimal("20.00000000"), LocalDateTime.now()));
+        portfolios.deleteAll();
+        users.deleteAll();
+
+        user = users.save(new com.trabalho.gestao_acoes.domains.UserAccount("testuser", "test@user.com", "pass", Instant.now()));
+        defaultPortfolio = portfolios.save(new com.trabalho.gestao_acoes.domains.Portfolio("Principal", user, Instant.now()));
+        org.mockito.Mockito.when(securityUtils.currentUser()).thenReturn(user);
+        org.mockito.Mockito.when(securityUtils.currentOwnerId()).thenReturn(user.getId());
+
+        asset = new Acao(null, "PETR4", "Petrobras", "BRASIL", "BRL",
+                new BigDecimal("20.00000000"), LocalDateTime.now());
+        asset.setOwner(user);
+        asset = assets.save(asset);
         broker = new Corretora(null, "11222333000181", "Corretora Teste", "Teste",
                 null, null, "01001000", null, null, null, null, null, "SP", "ATIVA", true, LocalDateTime.now());
         broker.setRegulatoryStatus(com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus.VERIFIED);
+        broker.setOwner(user);
         broker = brokers.save(broker);
         executor = Executors.newFixedThreadPool(2);
+
     }
 
     @AfterEach
@@ -123,7 +148,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
                 result.next();
-                assertThat(result.getLong(1)).isEqualTo(10);
+                assertThat(result.getLong(1)).isEqualTo(11);
             }
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangeloglock WHERE locked = false")) {
                 result.next();
@@ -134,7 +159,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
              var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
             result.next();
-            assertThat(result.getLong(1)).isEqualTo(10);
+            assertThat(result.getLong(1)).isEqualTo(11);
         }
     }
 
@@ -222,7 +247,7 @@ class CarteiraConcurrencyIntegrationTest {
                 () -> service.comprar(asset.getId(), broker.getId(), 5, new BigDecimal("26.00000000")));
 
         assertThat(results).allSatisfy(result -> assertThat(result.get(5, TimeUnit.SECONDS)).isNull());
-        var position = positions.findByAcaoIdAndCorretoraId(asset.getId(), broker.getId()).orElseThrow();
+        var position = positions.findByAcaoIdAndCorretoraIdAndPortfolioId(asset.getId(), broker.getId(), defaultPortfolio.getId()).orElseThrow();
         assertThat(position.getQuantidadeTotal()).isEqualTo(15);
         assertThat(position.getPrecoMedio()).isEqualByComparingTo("22.00000000");
         assertThat(transactions.count()).isEqualTo(2);
@@ -246,7 +271,7 @@ class CarteiraConcurrencyIntegrationTest {
 
         assertThat(success).isEqualTo(1);
         assertThat(rejected).isEqualTo(1);
-        assertThat(positions.findByAcaoIdAndCorretoraId(asset.getId(), broker.getId()).orElseThrow().getQuantidadeTotal())
+        assertThat(positions.findByAcaoIdAndCorretoraIdAndPortfolioId(asset.getId(), broker.getId(), defaultPortfolio.getId()).orElseThrow().getQuantidadeTotal())
                 .isEqualTo(3);
         assertThat(transactions.count()).isEqualTo(2);
     }
@@ -255,19 +280,19 @@ class CarteiraConcurrencyIntegrationTest {
     void preservesWeightedAverageOnPartialSaleAndAllowsRepurchaseAfterZero() {
         service.comprar(asset.getId(), broker.getId(), 1, new BigDecimal("10.00000000"));
         service.comprar(asset.getId(), broker.getId(), 2, new BigDecimal("10.01000000"));
-        var bought = positions.findByAcaoIdAndCorretoraId(asset.getId(), broker.getId()).orElseThrow();
+        var bought = positions.findByAcaoIdAndCorretoraIdAndPortfolioId(asset.getId(), broker.getId(), defaultPortfolio.getId()).orElseThrow();
         assertThat(bought.getQuantidadeTotal()).isEqualTo(3);
         assertThat(bought.getPrecoMedio()).isEqualByComparingTo("10.00666667");
 
         service.vender(asset.getId(), broker.getId(), 1, new BigDecimal("11.00000000"));
-        var partial = positions.findByAcaoIdAndCorretoraId(asset.getId(), broker.getId()).orElseThrow();
+        var partial = positions.findByAcaoIdAndCorretoraIdAndPortfolioId(asset.getId(), broker.getId(), defaultPortfolio.getId()).orElseThrow();
         assertThat(partial.getQuantidadeTotal()).isEqualTo(2);
         assertThat(partial.getPrecoMedio()).isEqualByComparingTo("10.00666667");
 
         service.vender(asset.getId(), broker.getId(), 2, new BigDecimal("11.00000000"));
-        assertThat(positions.findByAcaoIdAndCorretoraId(asset.getId(), broker.getId())).isEmpty();
+        assertThat(positions.findByAcaoIdAndCorretoraIdAndPortfolioId(asset.getId(), broker.getId(), defaultPortfolio.getId())).isEmpty();
         service.comprar(asset.getId(), broker.getId(), 1, new BigDecimal("12.00000000"));
-        assertThat(positions.findByAcaoIdAndCorretoraId(asset.getId(), broker.getId()).orElseThrow().getPrecoMedio())
+        assertThat(positions.findByAcaoIdAndCorretoraIdAndPortfolioId(asset.getId(), broker.getId(), defaultPortfolio.getId()).orElseThrow().getPrecoMedio())
                 .isEqualByComparingTo("12.00000000");
         assertThat(transactions.count()).isEqualTo(5);
     }
@@ -277,12 +302,13 @@ class CarteiraConcurrencyIntegrationTest {
         Corretora second = new Corretora(null, "19131243000197", "Segunda Corretora", "Segunda",
                 null, null, "20040002", null, null, null, null, null, "RJ", "ATIVA", true, LocalDateTime.now());
         second.setRegulatoryStatus(com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus.VERIFIED);
+        second.setOwner(user);
         second = brokers.save(second);
         service.comprar(asset.getId(), broker.getId(), 1, new BigDecimal("10.00000000"));
         service.comprar(asset.getId(), second.getId(), 2, new BigDecimal("20.00000000"));
         assertThat(positions.count()).isEqualTo(2);
 
-        var first = positions.findByAcaoIdAndCorretoraId(asset.getId(), broker.getId()).orElseThrow();
+        var first = positions.findByAcaoIdAndCorretoraIdAndPortfolioId(asset.getId(), broker.getId(), defaultPortfolio.getId()).orElseThrow();
         first.setQuantidadeTotal(Integer.MAX_VALUE);
         positions.saveAndFlush(first);
         long historyBefore = transactions.count();
@@ -303,7 +329,7 @@ class CarteiraConcurrencyIntegrationTest {
                     service.comprar(asset.getId(), broker.getId(), 1, new BigDecimal("20.00000000")))
                     .isInstanceOf(RuntimeException.class);
             assertThat(transactions.count()).isZero();
-            assertThat(positions.findByAcaoIdAndCorretoraId(asset.getId(), broker.getId())).isEmpty();
+            assertThat(positions.findByAcaoIdAndCorretoraIdAndPortfolioId(asset.getId(), broker.getId(), defaultPortfolio.getId())).isEmpty();
         } finally {
             try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
                 statement.execute("DROP TRIGGER IF EXISTS fail_position_insert ON posicao_carteira");
@@ -331,7 +357,7 @@ class CarteiraConcurrencyIntegrationTest {
             }
             public boolean suportaMercado(String market) { return "BRASIL".equals(market); }
         };
-        AcaoService registration = new AcaoService(assets, new CotacaoService(List.of(strategy)));
+        AcaoService registration = new AcaoService(assets, new CotacaoService(List.of(strategy)), securityUtils);
         AcaoResource resource = new AcaoResource();
         ReflectionTestUtils.setField(resource, "service", registration);
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
@@ -387,7 +413,7 @@ class CarteiraConcurrencyIntegrationTest {
         RegulatoryVerificationService verification = new RegulatoryVerificationService(registry, registrationClock,
                 java.time.Duration.ofDays(7), java.util.Set.of("CORRETORAS"));
         CorretoraService registration = new CorretoraService(brokers, companyClient, addressClient, verification,
-                registrationClock, java.time.Duration.ofDays(7));
+                registrationClock, java.time.Duration.ofDays(7), securityUtils);
         com.trabalho.gestao_acoes.resources.CorretoraResource resource = new com.trabalho.gestao_acoes.resources.CorretoraResource();
         ReflectionTestUtils.setField(resource, "service", registration);
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
@@ -417,7 +443,7 @@ class CarteiraConcurrencyIntegrationTest {
         CountDownLatch locked = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         Future<?> holder = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-            brokers.findByIdForUpdate(broker.getId()).orElseThrow();
+            brokers.findByIdAndOwnerIdForUpdate(broker.getId(), user.getId()).orElseThrow();
             locked.countDown();
             try { release.await(5, TimeUnit.SECONDS); }
             catch (InterruptedException ex) { Thread.currentThread().interrupt(); throw new RuntimeException(ex); }
@@ -440,8 +466,10 @@ class CarteiraConcurrencyIntegrationTest {
 
     @Test
     void zVersionedMigrationBlocksCanonicalCollisionsAndPreservesValidIds() throws Exception {
-        Acao collision = assets.save(new Acao(null, " petr4 ", "Duplicada", "NACIONAL", "BRL",
-                new BigDecimal("20.00000000"), LocalDateTime.now()));
+        Acao collision = new Acao(null, " petr4 ", "Duplicada", "NACIONAL", "BRL",
+                new BigDecimal("20.00000000"), LocalDateTime.now());
+        collision.setOwner(user);
+        collision = assets.save(collision);
         String preflight = Files.readString(Path.of("db/adoption/preflight-existing-postgresql.sql"), StandardCharsets.UTF_8);
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> executeSql(statement, preflight))

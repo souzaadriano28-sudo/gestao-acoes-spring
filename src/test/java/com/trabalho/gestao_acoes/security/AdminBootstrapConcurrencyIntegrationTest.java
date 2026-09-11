@@ -1,6 +1,6 @@
 package com.trabalho.gestao_acoes.security;
 
-import com.trabalho.gestao_acoes.repositories.AdminUserRepository;
+import com.trabalho.gestao_acoes.repositories.UserAccountRepository;
 import com.trabalho.gestao_acoes.services.AdminBootstrapService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,9 +17,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DirtiesContext
 class AdminBootstrapConcurrencyIntegrationTest {
     @Autowired AdminBootstrapService bootstrap;
-    @Autowired AdminUserRepository users;
-    @Autowired PasswordEncoder encoder;
+    @Autowired UserAccountRepository users;
+    @Autowired com.trabalho.gestao_acoes.repositories.PortfolioRepository portfolios;
+    @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
     @Test void concurrentFirstBootstrapCreatesExactlyOneAdministrator() throws Exception {
+        portfolios.deleteAll();
         users.deleteAll();
         CountDownLatch ready=new CountDownLatch(2);CountDownLatch start=new CountDownLatch(1);
         var executor=Executors.newFixedThreadPool(2);

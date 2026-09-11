@@ -5,7 +5,6 @@ import com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus;
 import com.trabalho.gestao_acoes.repositories.CorretoraRepository;
 import com.trabalho.gestao_acoes.services.exceptions.UpstreamUnavailableException;
 import java.time.Clock;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -13,13 +12,15 @@ public class RegulatoryEvidenceService {
     private final CorretoraRepository brokers;
     private final RegulatoryVerificationService verification;
     private final Clock clock;
+    private final SecurityUtils securityUtils;
 
-    public RegulatoryEvidenceService(CorretoraRepository brokers, RegulatoryVerificationService verification, Clock clock) {
-        this.brokers = brokers; this.verification = verification; this.clock = clock;
+    public RegulatoryEvidenceService(CorretoraRepository brokers, RegulatoryVerificationService verification, Clock clock,
+            SecurityUtils securityUtils) {
+        this.brokers = brokers; this.verification = verification; this.clock = clock; this.securityUtils = securityUtils;
     }
 
     public void refreshAll() {
-        var entities = brokers.findAll();
+        var entities = brokers.findAllByOwnerId(securityUtils.currentOwnerId());
         final com.trabalho.gestao_acoes.services.ports.RegulatoryRegistrySnapshot snapshot;
         try {
             snapshot = verification.loadSnapshot();
@@ -38,8 +39,4 @@ public class RegulatoryEvidenceService {
         brokers.saveAll(entities);
     }
 
-    @Scheduled(cron = "${app.regulatory.cvm.refresh-cron:0 15 3 * * *}", zone = "UTC")
-    public void scheduledRefresh() {
-        try { refreshAll(); } catch (UpstreamUnavailableException ignored) { }
-    }
 }

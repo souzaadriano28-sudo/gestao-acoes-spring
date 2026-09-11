@@ -17,6 +17,7 @@ BEGIN
       ('acao','quote_reference_at','timestamp with time zone','YES',NULL,NULL,NULL),
       ('acao','quote_fetched_at','timestamp with time zone','YES',NULL,NULL,NULL),
       ('acao','quote_reference_kind','character varying','YES',40,NULL,NULL),
+      ('acao','owner_id','bigint','NO',NULL,NULL,NULL),
       ('corretora','id','bigint','NO',NULL,NULL,NULL), ('corretora','cnpj','character varying','NO',14,NULL,NULL),
       ('corretora','razao_social','character varying','NO',255,NULL,NULL), ('corretora','nome_fantasia','character varying','YES',255,NULL,NULL),
       ('corretora','email','character varying','YES',255,NULL,NULL), ('corretora','telefone','character varying','YES',255,NULL,NULL),
@@ -32,13 +33,16 @@ BEGIN
       ('corretora','regulatory_reference_at','timestamp with time zone','YES',NULL,NULL,NULL),
       ('corretora','regulatory_checked_at','timestamp with time zone','YES',NULL,NULL,NULL),
       ('corretora','regulatory_reason','character varying','YES',120,NULL,NULL),
+      ('corretora','owner_id','bigint','NO',NULL,NULL,NULL),
       ('transacao','id','bigint','NO',NULL,NULL,NULL), ('transacao','tipo','character varying','NO',255,NULL,NULL),
       ('transacao','quantidade','integer','NO',NULL,NULL,NULL), ('transacao','preco_unitario','numeric','NO',NULL,19,8),
       ('transacao','data_hora','timestamp without time zone','NO',NULL,NULL,NULL), ('transacao','acao_id','bigint','NO',NULL,NULL,NULL),
       ('transacao','corretora_id','bigint','NO',NULL,NULL,NULL),
+      ('transacao','portfolio_id','bigint','NO',NULL,NULL,NULL),
       ('posicao_carteira','id','bigint','NO',NULL,NULL,NULL), ('posicao_carteira','quantidade_total','integer','NO',NULL,NULL,NULL),
       ('posicao_carteira','preco_medio','numeric','NO',NULL,19,8), ('posicao_carteira','acao_id','bigint','NO',NULL,NULL,NULL),
       ('posicao_carteira','corretora_id','bigint','NO',NULL,NULL,NULL),
+      ('posicao_carteira','portfolio_id','bigint','NO',NULL,NULL,NULL),
       ('exchange_rate_snapshot','id','bigint','NO',NULL,NULL,NULL),
       ('exchange_rate_snapshot','base_currency','character varying','NO',3,NULL,NULL),
       ('exchange_rate_snapshot','quote_currency','character varying','NO',3,NULL,NULL),
@@ -65,21 +69,26 @@ BEGIN
 
   WITH expected(table_name, column_name) AS (VALUES
     ('acao','id'),('acao','ticker'),('acao','nome_empresa'),('acao','mercado'),('acao','moeda'),('acao','cotacao_atual'),('acao','data_hora_cotacao'),
-    ('acao','quote_source_type'),('acao','quote_provider'),('acao','quote_reference_at'),('acao','quote_fetched_at'),('acao','quote_reference_kind'),
-    ('corretora','id'),('corretora','cnpj'),('corretora','razao_social'),('corretora','nome_fantasia'),('corretora','email'),('corretora','telefone'),('corretora','cep'),('corretora','logradouro'),('corretora','numero'),('corretora','complemento'),('corretora','bairro'),('corretora','cidade'),('corretora','uf'),('corretora','situacao_cadastral'),('corretora','validada_na_cvm'),('corretora','data_cadastro'),('corretora','regulatory_status'),('corretora','regulatory_category'),('corretora','regulatory_source'),('corretora','regulatory_evidence_id'),('corretora','regulatory_reference_at'),('corretora','regulatory_checked_at'),('corretora','regulatory_reason'),
-    ('transacao','id'),('transacao','tipo'),('transacao','quantidade'),('transacao','preco_unitario'),('transacao','data_hora'),('transacao','acao_id'),('transacao','corretora_id'),
-    ('posicao_carteira','id'),('posicao_carteira','quantidade_total'),('posicao_carteira','preco_medio'),('posicao_carteira','acao_id'),('posicao_carteira','corretora_id'),
-    ('exchange_rate_snapshot','id'),('exchange_rate_snapshot','base_currency'),('exchange_rate_snapshot','quote_currency'),('exchange_rate_snapshot','rate'),('exchange_rate_snapshot','source_type'),('exchange_rate_snapshot','provider'),('exchange_rate_snapshot','reference_at'),('exchange_rate_snapshot','fetched_at'),('exchange_rate_snapshot','reference_kind'))
+    ('acao','quote_source_type'),('acao','quote_provider'),('acao','quote_reference_at'),('acao','quote_fetched_at'),('acao','quote_reference_kind'),('acao','owner_id'),
+    ('corretora','id'),('corretora','cnpj'),('corretora','razao_social'),('corretora','nome_fantasia'),('corretora','email'),('corretora','telefone'),('corretora','cep'),('corretora','logradouro'),('corretora','numero'),('corretora','complemento'),('corretora','bairro'),('corretora','cidade'),('corretora','uf'),('corretora','situacao_cadastral'),('corretora','validada_na_cvm'),('corretora','data_cadastro'),('corretora','regulatory_status'),('corretora','regulatory_category'),('corretora','regulatory_source'),('corretora','regulatory_evidence_id'),('corretora','regulatory_reference_at'),('corretora','regulatory_checked_at'),('corretora','regulatory_reason'),('corretora','owner_id'),
+    ('transacao','id'),('transacao','tipo'),('transacao','quantidade'),('transacao','preco_unitario'),('transacao','data_hora'),('transacao','acao_id'),('transacao','corretora_id'),('transacao','portfolio_id'),
+    ('posicao_carteira','id'),('posicao_carteira','quantidade_total'),('posicao_carteira','preco_medio'),('posicao_carteira','acao_id'),('posicao_carteira','corretora_id'),('posicao_carteira','portfolio_id'),
+    ('exchange_rate_snapshot','id'),('exchange_rate_snapshot','base_currency'),('exchange_rate_snapshot','quote_currency'),('exchange_rate_snapshot','rate'),('exchange_rate_snapshot','source_type'),('exchange_rate_snapshot','provider'),('exchange_rate_snapshot','reference_at'),('exchange_rate_snapshot','fetched_at'),('exchange_rate_snapshot','reference_kind'),
+    ('user_account','id'),('user_account','username'),('user_account','email'),('user_account','password_hash'),('user_account','enabled'),('user_account','failed_attempts'),('user_account','failure_window_started_at'),('user_account','locked_until'),('user_account','created_at'),('user_account','updated_at'),('user_account','version'),
+    ('portfolio','id'),('portfolio','name'),('portfolio','owner_id'),('portfolio','created_at'))
   SELECT concat(c.table_name,'.',c.column_name) INTO unexpected_column
   FROM information_schema.columns c LEFT JOIN expected e USING (table_name,column_name)
-  WHERE c.table_schema=current_schema() AND c.table_name IN ('acao','corretora','transacao','posicao_carteira','exchange_rate_snapshot')
+  WHERE c.table_schema=current_schema() AND c.table_name IN ('acao','corretora','transacao','posicao_carteira','exchange_rate_snapshot','user_account','portfolio')
     AND e.column_name IS NULL LIMIT 1;
   IF unexpected_column IS NOT NULL THEN RAISE EXCEPTION 'schema equivalence: unexpected column %', unexpected_column; END IF;
 
   SELECT required.name INTO missing_constraint FROM (VALUES
     ('pk_acao'),('pk_corretora'),('pk_transacao'),('pk_posicao_carteira'),('pk_exchange_rate_snapshot'),
-    ('uk_acao_ticker'),('uk_corretora_cnpj'),('uk_posicao_acao_corretora'),('uk_exchange_rate_pair'),
+    ('pk_user_account'),('pk_portfolio'),
+    ('uk_acao_ticker_owner'),('uk_corretora_cnpj_owner'),('uk_posicao_acao_corretora_portfolio'),('uk_exchange_rate_pair'),
+    ('uk_user_account_username'),('uk_user_account_email'),
     ('fk_transacao_acao'),('fk_transacao_corretora'),('fk_posicao_acao'),('fk_posicao_corretora'),
+    ('fk_acao_owner'),('fk_corretora_owner'),('fk_portfolio_owner'),('fk_transacao_portfolio'),('fk_posicao_portfolio'),
     ('ck_transacao_valores_positivos'),('ck_transacao_tipo'),('ck_posicao_valores_positivos'),
     ('ck_exchange_rate_positive'),('ck_corretora_regulatory_status')) required(name)
   WHERE NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname=required.name) LIMIT 1;

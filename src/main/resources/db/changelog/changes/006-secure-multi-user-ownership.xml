@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="006-secure-multi-user-ownership" author="atlas-carteira">
+        <!-- 1. Create Tables -->
+        <createTable tableName="user_account">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true" primaryKeyName="pk_user_account" nullable="false"/></column>
+            <column name="username" type="VARCHAR(64)"><constraints nullable="false" unique="true" uniqueConstraintName="uk_user_account_username"/></column>
+            <column name="email" type="VARCHAR(255)"><constraints nullable="false" unique="true" uniqueConstraintName="uk_user_account_email"/></column>
+            <column name="password_hash" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="enabled" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="failed_attempts" type="INTEGER" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="failure_window_started_at" type="TIMESTAMP"/>
+            <column name="locked_until" type="TIMESTAMP"/>
+            <column name="created_at" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="updated_at" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="version" type="BIGINT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+
+        <createTable tableName="portfolio">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true" primaryKeyName="pk_portfolio" nullable="false"/></column>
+            <column name="name" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="owner_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="created_at" type="TIMESTAMP"><constraints nullable="false"/></column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="portfolio" baseColumnNames="owner_id" referencedTableName="user_account" referencedColumnNames="id" constraintName="fk_portfolio_owner"/>
+
+        <!-- 2. Add owner columns to existing tables (nullable first) -->
+        <addColumn tableName="corretora"><column name="owner_id" type="BIGINT"/></addColumn>
+        <addColumn tableName="acao"><column name="owner_id" type="BIGINT"/></addColumn>
+        <addColumn tableName="transacao"><column name="portfolio_id" type="BIGINT"/></addColumn>
+        <addColumn tableName="posicao_carteira"><column name="portfolio_id" type="BIGINT"/></addColumn>
+
+        <sql>
+            INSERT INTO user_account (id, username, email, password_hash, enabled, failed_attempts, created_at, updated_at, version)
+            SELECT id, username, 'admin@atlas.local', password_hash, enabled, failed_attempts, created_at, updated_at, version
+            FROM admin_user WHERE account_slot = 1;
+        </sql>
+        <sql dbms="postgresql">
+            SELECT setval(pg_get_serial_sequence('user_account', 'id'), COALESCE((SELECT MAX(id) FROM user_account), 1), true);
+        </sql>
+        <sql dbms="h2">
+            ALTER TABLE user_account ALTER COLUMN id RESTART WITH 2;
+        </sql>
+        <sql>
+            INSERT INTO portfolio (name, owner_id, created_at)
+            SELECT 'Principal', id, created_at FROM user_account
+            WHERE username = (SELECT username FROM admin_user WHERE account_slot = 1);
+        </sql>
+
+        <sql>
+            UPDATE corretora SET owner_id = (SELECT id FROM user_account
+                WHERE username = (SELECT username FROM admin_user WHERE account_slot = 1));
+            UPDATE acao SET owner_id = (SELECT id FROM user_account
+                WHERE username = (SELECT username FROM admin_user WHERE account_slot = 1));
+            UPDATE transacao SET portfolio_id = (SELECT id FROM portfolio
+                WHERE owner_id = (SELECT id FROM user_account WHERE username = (SELECT username FROM admin_user WHERE account_slot = 1)));
+            UPDATE posicao_carteira SET portfolio_id = (SELECT id FROM portfolio
+                WHERE owner_id = (SELECT id FROM user_account WHERE username = (SELECT username FROM admin_user WHERE account_slot = 1)));
+        </sql>
+
+        <!-- 5. Enforce constraints -->
+        <addNotNullConstraint tableName="corretora" columnName="owner_id" columnDataType="BIGINT"/>
+        <addNotNullConstraint tableName="acao" columnName="owner_id" columnDataType="BIGINT"/>
+        <addNotNullConstraint tableName="transacao" columnName="portfolio_id" columnDataType="BIGINT"/>
+        <addNotNullConstraint tableName="posicao_carteira" columnName="portfolio_id" columnDataType="BIGINT"/>
+
+        <addForeignKeyConstraint baseTableName="corretora" baseColumnNames="owner_id" referencedTableName="user_account" referencedColumnNames="id" constraintName="fk_corretora_owner"/>
+        <addForeignKeyConstraint baseTableName="acao" baseColumnNames="owner_id" referencedTableName="user_account" referencedColumnNames="id" constraintName="fk_acao_owner"/>
+        <addForeignKeyConstraint baseTableName="transacao" baseColumnNames="portfolio_id" referencedTableName="portfolio" referencedColumnNames="id" constraintName="fk_transacao_portfolio"/>
+        <addForeignKeyConstraint baseTableName="posicao_carteira" baseColumnNames="portfolio_id" referencedTableName="portfolio" referencedColumnNames="id" constraintName="fk_posicao_portfolio"/>
+
+        <!-- 6. Drop old unique constraints and add new scoped ones -->
+        <dropUniqueConstraint tableName="acao" constraintName="uk_acao_ticker"/>
+        <dropUniqueConstraint tableName="corretora" constraintName="uk_corretora_cnpj"/>
+        <addUniqueConstraint tableName="acao" columnNames="ticker, owner_id" constraintName="uk_acao_ticker_owner"/>
+        <addUniqueConstraint tableName="corretora" columnNames="cnpj, owner_id" constraintName="uk_corretora_cnpj_owner"/>
+        
+        <dropUniqueConstraint tableName="posicao_carteira" constraintName="uk_posicao_acao_corretora"/>
+        <addUniqueConstraint tableName="posicao_carteira" columnNames="acao_id, corretora_id, portfolio_id" constraintName="uk_posicao_acao_corretora_portfolio"/>
+
+        <rollback>
+            <dropUniqueConstraint tableName="posicao_carteira" constraintName="uk_posicao_acao_corretora_portfolio"/>
+            <addUniqueConstraint tableName="posicao_carteira" columnNames="acao_id, corretora_id" constraintName="uk_posicao_acao_corretora"/>
+            
+            <dropUniqueConstraint tableName="corretora" constraintName="uk_corretora_cnpj_owner"/>
+            <addUniqueConstraint tableName="corretora" columnNames="cnpj" constraintName="uk_corretora_cnpj"/>
+            
+            <dropUniqueConstraint tableName="acao" constraintName="uk_acao_ticker_owner"/>
+            <addUniqueConstraint tableName="acao" columnNames="ticker" constraintName="uk_acao_ticker"/>
+
+            <dropForeignKeyConstraint baseTableName="posicao_carteira" constraintName="fk_posicao_portfolio"/>
+            <dropForeignKeyConstraint baseTableName="transacao" constraintName="fk_transacao_portfolio"/>
+            <dropForeignKeyConstraint baseTableName="acao" constraintName="fk_acao_owner"/>
+            <dropForeignKeyConstraint baseTableName="corretora" constraintName="fk_corretora_owner"/>
+            <dropForeignKeyConstraint baseTableName="portfolio" constraintName="fk_portfolio_owner"/>
+
+            <dropColumn tableName="posicao_carteira" columnName="portfolio_id"/>
+            <dropColumn tableName="transacao" columnName="portfolio_id"/>
+            <dropColumn tableName="acao" columnName="owner_id"/>
+            <dropColumn tableName="corretora" columnName="owner_id"/>
+
+            <dropTable tableName="portfolio"/>
+            <dropTable tableName="user_account"/>
+        </rollback>
+
+    </changeSet>
+
+</databaseChangeLog>

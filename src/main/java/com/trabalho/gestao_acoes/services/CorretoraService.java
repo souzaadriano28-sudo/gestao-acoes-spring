@@ -31,22 +31,30 @@ public class CorretoraService {
     private static final Set<Integer> COMPLEMENTARY_CNAES = Set.of(6612601, 6612602, 6431900);
     private final CorretoraRepository repository;
     private final CnpjClientPort cnpjClient;
+
     private final CepClientPort cepClient;
     private final RegulatoryVerificationService regulatoryVerification;
     private final Clock clock;
     private final Duration regulatoryFreshness;
+    private final SecurityUtils securityUtils;
 
     @Autowired
     public CorretoraService(CorretoraRepository repository, CnpjClientPort cnpjClient, CepClientPort cepClient,
             RegulatoryVerificationService regulatoryVerification, Clock clock,
-            @Value("${app.regulatory.cvm.freshness:P7D}") Duration regulatoryFreshness) {
+            @Value("${app.regulatory.cvm.freshness:P7D}") Duration regulatoryFreshness, SecurityUtils securityUtils) {
         this.repository = repository;
         this.cnpjClient = cnpjClient;
         this.cepClient = cepClient;
         this.regulatoryVerification = regulatoryVerification;
         this.clock = clock;
         this.regulatoryFreshness = regulatoryFreshness;
+        this.securityUtils = securityUtils;
     }
+
+    private com.trabalho.gestao_acoes.domains.UserAccount currentUser() {
+        return securityUtils.currentUser();
+    }
+
 
     public BrokerCnpjPreviewDTO consultCnpj(String input) {
         String cnpj = Identifiers.cnpjFromBody(input);
@@ -94,15 +102,16 @@ public class CorretoraService {
         dto.setUf(required(address.getUf(), "UF"));
         Corretora entity = CorretoraMapper.toEntity(dto);
         entity.setDataCadastro(LocalDateTime.now(clock));
+        entity.setOwner(currentUser());
         applyDecision(entity, decision);
         return dto(repository.save(entity));
     }
 
-    public List<CorretoraDTO> findAll() { return repository.findAll().stream().map(this::dto).toList(); }
-    public CorretoraDTO findById(Long id) { return dto(repository.findById(id).orElseThrow(() -> new NotFoundException("Corretora não encontrada."))); }
+    public List<CorretoraDTO> findAll() { return repository.findAllByOwnerId(currentUser().getId()).stream().map(this::dto).toList(); }
+    public CorretoraDTO findById(Long id) { return dto(repository.findByIdAndOwnerId(id, currentUser().getId()).orElseThrow(() -> new NotFoundException("Corretora não encontrada."))); }
     public CorretoraDTO findByCnpj(String cnpj) {
         String canonical = Identifiers.cnpjFromPath(cnpj);
-        return dto(repository.findByCnpj(canonical).orElseThrow(() -> new NotFoundException("Corretora não encontrada.")));
+        return dto(repository.findByCnpjAndOwnerId(canonical, currentUser().getId()).orElseThrow(() -> new NotFoundException("Corretora não encontrada.")));
     }
 
     static void applyDecision(Corretora entity, Decision decision) {
@@ -116,9 +125,11 @@ public class CorretoraService {
         entity.setValidadaNaCvm(decision.authorized());
     }
 
+
     private void rejectDuplicate(String cnpj) {
-        if (repository.findByCnpj(cnpj).isPresent()) throw new ConflictException("DUPLICATE_CNPJ", "CNPJ já cadastrado.");
+        if (repository.findByCnpjAndOwnerId(cnpj, currentUser().getId()).isPresent()) throw new ConflictException("DUPLICATE_CNPJ", "CNPJ já cadastrado.");
     }
+
 
     private static void validateCompany(BrasilApiResponse company) {
         if (company == null || blank(company.getRazaoSocial()) || blank(company.getDescricaoSituacaoCadastral())) {

@@ -1,6 +1,7 @@
 package com.trabalho.gestao_acoes.services;
 
 import com.trabalho.gestao_acoes.domains.Corretora;
+import com.trabalho.gestao_acoes.domains.Acao;
 import com.trabalho.gestao_acoes.domains.dtos.AcaoDTO;
 import com.trabalho.gestao_acoes.domains.dtos.CorretoraDTO;
 import com.trabalho.gestao_acoes.integrations.brasilapi.BrasilApiResponse;
@@ -28,9 +29,46 @@ class RegistrationServiceTest {
     @Test
     void rejectsClientSuppliedAssetIdBeforeQuoteOrPersistence() {
         AcaoRepository repository = mock(AcaoRepository.class); CotacaoService quotes = mock(CotacaoService.class);
+        SecurityUtils securityUtils = mock(SecurityUtils.class);
+        com.trabalho.gestao_acoes.domains.UserAccount user = new com.trabalho.gestao_acoes.domains.UserAccount(); user.setId(2L);
+        when(securityUtils.currentOwnerId()).thenReturn(2L);
+        when(securityUtils.currentUser()).thenReturn(user);
         AcaoDTO dto = new AcaoDTO(); dto.setId(99L); dto.setTicker("PETR4"); dto.setMercado("BRASIL");
-        assertThatThrownBy(() -> new AcaoService(repository, quotes).insert(dto)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> new AcaoService(repository, quotes, securityUtils).insert(dto)).isInstanceOf(BusinessException.class);
+
         verifyNoInteractions(repository, quotes);
+    }
+
+    @Test
+    void scopesTickerUniquenessToOwner() {
+        AcaoRepository repository = mock(AcaoRepository.class);
+        CotacaoService quotes = mock(CotacaoService.class);
+        SecurityUtils securityUtils = mock(SecurityUtils.class);
+        var firstOwner = new com.trabalho.gestao_acoes.domains.UserAccount(); firstOwner.setId(1L);
+        var secondOwner = new com.trabalho.gestao_acoes.domains.UserAccount(); secondOwner.setId(2L);
+        var currentOwner = new com.trabalho.gestao_acoes.domains.UserAccount[] {firstOwner};
+        var registered = new java.util.HashSet<String>();
+        when(securityUtils.currentOwnerId()).thenAnswer(invocation -> currentOwner[0].getId());
+        when(securityUtils.currentUser()).thenAnswer(invocation -> currentOwner[0]);
+        when(repository.findByTickerAndOwnerId(anyString(), anyLong())).thenAnswer(invocation ->
+                registered.contains(invocation.getArgument(1) + ":" + invocation.getArgument(0))
+                        ? java.util.Optional.of(new Acao()) : java.util.Optional.empty());
+        when(repository.save(any(Acao.class))).thenAnswer(invocation -> {
+            Acao saved = invocation.getArgument(0);
+            registered.add(saved.getOwner().getId() + ":" + saved.getTicker());
+            return saved;
+        });
+        when(quotes.buscar("PETR4", "BRASIL"))
+                .thenReturn(new com.trabalho.gestao_acoes.services.ports.CotacaoBolsa(new java.math.BigDecimal("20"), "BRL"));
+
+        AcaoService service = new AcaoService(repository, quotes, securityUtils);
+        service.insert(assetRequest("PETR4"));
+        currentOwner[0] = secondOwner;
+        assertThatCode(() -> service.insert(assetRequest("PETR4"))).doesNotThrowAnyException();
+        currentOwner[0] = firstOwner;
+        assertThatThrownBy(() -> service.insert(assetRequest("PETR4")))
+                .isInstanceOf(ConflictException.class)
+                .extracting("code").isEqualTo("DUPLICATE_TICKER");
     }
 
     @Test
@@ -62,7 +100,7 @@ class RegistrationServiceTest {
                 .extracting("code").isEqualTo("BUSINESS_INACTIVE");
         verifyNoInteractions(inactive.registry);
 
-        Fixture duplicate = fixture(activeEntry("CORRETORAS")); when(duplicate.repository.findByCnpj(CNPJ)).thenReturn(Optional.of(new Corretora()));
+        Fixture duplicate = fixture(activeEntry("CORRETORAS")); when(duplicate.repository.findByCnpjAndOwnerId(CNPJ, 2L)).thenReturn(Optional.of(new Corretora()));
         assertThatThrownBy(() -> duplicate.service.consultCnpj(CNPJ)).isInstanceOf(ConflictException.class);
         verifyNoInteractions(duplicate.company, duplicate.registry);
     }
@@ -100,6 +138,13 @@ class RegistrationServiceTest {
         verify(f.repository, never()).save(any());
     }
 
+    private static AcaoDTO assetRequest(String ticker) {
+        AcaoDTO request = new AcaoDTO();
+        request.setTicker(ticker);
+        request.setMercado("BRASIL");
+        return request;
+    }
+
     private static Fixture fixture(RegulatoryRegistrySnapshot.RegulatoryEntry... entries) {
         CorretoraRepository repository = mock(CorretoraRepository.class); CnpjClientPort company = mock(CnpjClientPort.class);
         CepClientPort address = mock(CepClientPort.class); RegulatoryRegistryPort registry = mock(RegulatoryRegistryPort.class);
@@ -116,7 +161,16 @@ class RegistrationServiceTest {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         RegulatoryVerificationService verification = new RegulatoryVerificationService(registry, clock, Duration.ofDays(7),
                 Set.of("CORRETORAS", "DISTRIBUIDORAS", "BANCOS DE INVESTIMENTOS", "BANCOS MÚLTIPLOS COM CARTEIRA DE INVESTIMENTO"));
-        CorretoraService service = new CorretoraService(repository, company, address, verification, clock, Duration.ofDays(7));
+        com.trabalho.gestao_acoes.repositories.UserAccountRepository userRepository = mock(com.trabalho.gestao_acoes.repositories.UserAccountRepository.class);
+
+        SecurityUtils securityUtils = mock(SecurityUtils.class);
+        com.trabalho.gestao_acoes.domains.UserAccount user = new com.trabalho.gestao_acoes.domains.UserAccount();
+        user.setId(2L);
+        when(securityUtils.currentOwnerId()).thenReturn(2L);
+        when(securityUtils.currentUser()).thenReturn(user);
+        CorretoraService service = new CorretoraService(repository, company, address, verification, clock, Duration.ofDays(7), securityUtils);
+
+
         return new Fixture(repository, company, address, registry, companyResponse, service);
     }
 
