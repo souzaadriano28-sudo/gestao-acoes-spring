@@ -12,6 +12,7 @@ public class CotacaoBolsa {
     private Instant referenceAt;
     private Instant fetchedAt;
     private String referenceKind;
+    private String nomeEmpresa;
 
     public CotacaoBolsa() {
     }
@@ -42,4 +43,6 @@ public class CotacaoBolsa {
     public Instant getReferenceAt() { return referenceAt; }
     public Instant getFetchedAt() { return fetchedAt; }
     public String getReferenceKind() { return referenceKind; }
+    public String getNomeEmpresa() { return nomeEmpresa; }
+    public void setNomeEmpresa(String nomeEmpresa) { this.nomeEmpresa = nomeEmpresa; }
 }

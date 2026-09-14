@@ -30,7 +30,7 @@ public class CorretoraMapper {
         dto.setCidade(entity.getCidade());
         dto.setUf(entity.getUf());
         dto.setSituacaoCadastral(entity.getSituacaoCadastral());
-        dto.setValidadaNaCvm(entity.getValidadaNaCvm());
+        dto.setValidadaNaCvm(entity.getRegulatoryStatus() == com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus.VERIFIED);
         dto.setDataCadastro(entity.getDataCadastro());
         dto.setBusinessRegistration(new BusinessRegistrationDTO("BRASIL_API",
                 entity.getSituacaoCadastral(), entity.getSituacaoCadastral() == null ? "BUSINESS_STATUS_UNAVAILABLE" : null));

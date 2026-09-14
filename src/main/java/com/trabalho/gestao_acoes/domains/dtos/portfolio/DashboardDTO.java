@@ -8,4 +8,13 @@ public record DashboardDTO(@JsonFormat(shape = JsonFormat.Shape.STRING) Instant 
         MoneyMetricDTO patrimony, MoneyMetricDTO cost, MoneyMetricDTO unrealizedResult,
         PercentageMetricDTO unrealizedResultPercentage, List<DetailedPositionDTO> positions,
         List<MovementDTO> recentMovements, List<QuoteProvenanceDTO> quoteSources,
-        ExchangeProvenanceDTO exchangeSource) {}
+        ExchangeProvenanceDTO exchangeSource, List<CurrencySummaryDTO> nativeCurrencySummaries) {
+    /** Source-compatible constructor for internal clients that predate native summaries. */
+    public DashboardDTO(Instant asOf, String presentationCurrency, int positionCount, MoneyMetricDTO patrimony,
+            MoneyMetricDTO cost, MoneyMetricDTO unrealizedResult, PercentageMetricDTO unrealizedResultPercentage,
+            List<DetailedPositionDTO> positions, List<MovementDTO> recentMovements,
+            List<QuoteProvenanceDTO> quoteSources, ExchangeProvenanceDTO exchangeSource) {
+        this(asOf, presentationCurrency, positionCount, patrimony, cost, unrealizedResult,
+                unrealizedResultPercentage, positions, recentMovements, quoteSources, exchangeSource, List.of());
+    }
+}

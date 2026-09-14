@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet id="010-expand-broker-regulatory-status" author="atlas-corretoras">
+        <sql>ALTER TABLE corretora DROP CONSTRAINT ck_corretora_regulatory_status</sql>
+        <sql>ALTER TABLE corretora ADD CONSTRAINT ck_corretora_regulatory_status CHECK (regulatory_status IN ('NOT_CHECKED','VERIFIED','NOT_FOUND','INACTIVE','INCOMPATIBLE','STALE','UNAVAILABLE'))</sql>
+        <rollback>
+            <sql>UPDATE corretora SET regulatory_status = 'NOT_FOUND' WHERE regulatory_status IN ('INACTIVE','INCOMPATIBLE')</sql>
+            <sql>ALTER TABLE corretora DROP CONSTRAINT ck_corretora_regulatory_status</sql>
+            <sql>ALTER TABLE corretora ADD CONSTRAINT ck_corretora_regulatory_status CHECK (regulatory_status IN ('NOT_CHECKED','VERIFIED','NOT_FOUND','STALE','UNAVAILABLE'))</sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

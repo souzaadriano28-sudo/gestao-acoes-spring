@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.util.Objects;
 
 @Entity
-@Table(name = "posicao_carteira", uniqueConstraints = @UniqueConstraint(name = "uk_posicao_acao_corretora", columnNames = {"acao_id", "corretora_id"}))
+@Table(name = "posicao_carteira", uniqueConstraints = @UniqueConstraint(name = "uk_posicao_acao_corretora_portfolio", columnNames = {"acao_id", "corretora_id", "portfolio_id"}))
 @Check(constraints = "quantidade_total > 0 and preco_medio > 0")
 public class PosicaoCarteira implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -22,6 +22,9 @@ public class PosicaoCarteira implements Serializable {
     @Column(nullable = false, precision = 19, scale = 8)
     private BigDecimal precoMedio;
 
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal resultadoRealizado = BigDecimal.ZERO;
+
     @ManyToOne
     @JoinColumn(name = "acao_id", nullable = false)
     private Acao acao;
@@ -29,6 +32,11 @@ public class PosicaoCarteira implements Serializable {
     @ManyToOne
     @JoinColumn(name = "corretora_id", nullable = false)
     private Corretora corretora;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "portfolio_id", nullable = false)
+    private Portfolio portfolio;
+
 
     public PosicaoCarteira() {
     }
@@ -49,12 +57,17 @@ public class PosicaoCarteira implements Serializable {
 
     public BigDecimal getPrecoMedio() { return precoMedio; }
     public void setPrecoMedio(BigDecimal precoMedio) { this.precoMedio = precoMedio; }
+    public BigDecimal getResultadoRealizado() { return resultadoRealizado; }
+    public void setResultadoRealizado(BigDecimal resultadoRealizado) { this.resultadoRealizado = resultadoRealizado; }
 
     public Acao getAcao() { return acao; }
     public void setAcao(Acao acao) { this.acao = acao; }
 
     public Corretora getCorretora() { return corretora; }
     public void setCorretora(Corretora corretora) { this.corretora = corretora; }
+
+    public Portfolio getPortfolio() { return portfolio; }
+    public void setPortfolio(Portfolio portfolio) { this.portfolio = portfolio; }
 
     @Override
     public boolean equals(Object o) {

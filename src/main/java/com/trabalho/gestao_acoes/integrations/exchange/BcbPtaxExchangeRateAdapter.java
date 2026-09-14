@@ -59,7 +59,10 @@ public class BcbPtaxExchangeRateAdapter implements ExchangeRatePort {
             BcbPtaxResponse.Quote selected = Optional.ofNullable(response).map(BcbPtaxResponse::value).stream()
                     .flatMap(java.util.Collection::stream)
                     .filter(q -> q != null && q.cotacaoVenda() != null && q.cotacaoVenda().signum() > 0)
-                    .filter(q -> "FECHAMENTO PTAX".equalsIgnoreCase(q.tipoBoletim()))
+                    // The current BCB OData period response omits tipoBoletim; when supplied,
+                    // keep preferring the official closing observation.
+                    .filter(q -> q.tipoBoletim() == null || q.tipoBoletim().isBlank()
+                            || "FECHAMENTO PTAX".equalsIgnoreCase(q.tipoBoletim()))
                     .max(Comparator.comparing(q -> parseReference(q.dataHoraCotacao()))).orElseThrow();
             Instant referenceAt = parseReference(selected.dataHoraCotacao());
             rate = new ExchangeRate("USD", "BRL", MoneyPolicy.quote(selected.cotacaoVenda()),

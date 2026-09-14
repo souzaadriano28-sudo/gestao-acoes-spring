@@ -28,6 +28,28 @@ public class Transacao implements Serializable {
     @Column(nullable = false, precision = 19, scale = 8)
     private BigDecimal precoUnitario;
 
+    @Column(nullable = false, length = 3)
+    private String moeda;
+
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal corretagem = BigDecimal.ZERO;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal taxas = BigDecimal.ZERO;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal impostos = BigDecimal.ZERO;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal outrosCustos = BigDecimal.ZERO;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal valorBruto;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal valorTotal;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal resultadoRealizado = BigDecimal.ZERO;
+    @Column(length = 2000)
+    private String observacao;
+    @Column(length = 100)
+    private String idempotencyKey;
+
     @Column(nullable = false)
     private LocalDateTime dataHora;
 
@@ -38,6 +60,11 @@ public class Transacao implements Serializable {
     @ManyToOne
     @JoinColumn(name = "corretora_id", nullable = false)
     private Corretora corretora;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "portfolio_id", nullable = false)
+    private Portfolio portfolio;
+
 
     public Transacao() {
     }
@@ -63,6 +90,26 @@ public class Transacao implements Serializable {
 
     public BigDecimal getPrecoUnitario() { return precoUnitario; }
     public void setPrecoUnitario(BigDecimal precoUnitario) { this.precoUnitario = precoUnitario; }
+    public String getMoeda() { return moeda; }
+    public void setMoeda(String moeda) { this.moeda = moeda; }
+    public BigDecimal getCorretagem() { return corretagem; }
+    public void setCorretagem(BigDecimal corretagem) { this.corretagem = corretagem; }
+    public BigDecimal getTaxas() { return taxas; }
+    public void setTaxas(BigDecimal taxas) { this.taxas = taxas; }
+    public BigDecimal getImpostos() { return impostos; }
+    public void setImpostos(BigDecimal impostos) { this.impostos = impostos; }
+    public BigDecimal getOutrosCustos() { return outrosCustos; }
+    public void setOutrosCustos(BigDecimal outrosCustos) { this.outrosCustos = outrosCustos; }
+    public BigDecimal getValorBruto() { return valorBruto; }
+    public void setValorBruto(BigDecimal valorBruto) { this.valorBruto = valorBruto; }
+    public BigDecimal getValorTotal() { return valorTotal; }
+    public void setValorTotal(BigDecimal valorTotal) { this.valorTotal = valorTotal; }
+    public BigDecimal getResultadoRealizado() { return resultadoRealizado; }
+    public void setResultadoRealizado(BigDecimal resultadoRealizado) { this.resultadoRealizado = resultadoRealizado; }
+    public String getObservacao() { return observacao; }
+    public void setObservacao(String observacao) { this.observacao = observacao; }
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 
     public LocalDateTime getDataHora() { return dataHora; }
     public void setDataHora(LocalDateTime dataHora) { this.dataHora = dataHora; }
@@ -72,6 +119,22 @@ public class Transacao implements Serializable {
 
     public Corretora getCorretora() { return corretora; }
     public void setCorretora(Corretora corretora) { this.corretora = corretora; }
+
+    public Portfolio getPortfolio() { return portfolio; }
+    public void setPortfolio(Portfolio portfolio) { this.portfolio = portfolio; }
+
+    @PrePersist
+    void completeLegacyLedgerFields() {
+        if (moeda == null && acao != null) moeda = acao.getMoeda();
+        if (corretagem == null) corretagem = BigDecimal.ZERO;
+        if (taxas == null) taxas = BigDecimal.ZERO;
+        if (impostos == null) impostos = BigDecimal.ZERO;
+        if (outrosCustos == null) outrosCustos = BigDecimal.ZERO;
+        if (valorBruto == null && precoUnitario != null && quantidade != null) valorBruto = precoUnitario.multiply(BigDecimal.valueOf(quantidade));
+        if (valorTotal == null) valorTotal = valorBruto;
+        if (resultadoRealizado == null) resultadoRealizado = BigDecimal.ZERO;
+    }
+
 
     @Override
     public boolean equals(Object o) {

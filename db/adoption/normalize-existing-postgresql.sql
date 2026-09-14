@@ -29,27 +29,70 @@ BEGIN
      AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='pk_posicao_carteira') THEN
     ALTER TABLE posicao_carteira RENAME CONSTRAINT posicao_carteira_pkey TO pk_posicao_carteira;
   END IF;
-  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='acao_ticker_key')
-     AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uk_acao_ticker') THEN
-    ALTER TABLE acao RENAME CONSTRAINT acao_ticker_key TO uk_acao_ticker;
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='corretora_cnpj_key')
-     AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uk_corretora_cnpj') THEN
-    ALTER TABLE corretora RENAME CONSTRAINT corretora_cnpj_key TO uk_corretora_cnpj;
-  END IF;
 END
 $constraint_names$;
 
+-- Remove only obsolete *global* uniqueness rules. The catalog predicates deliberately
+-- match one key column, so owner/portfolio-scoped constraints, primary keys, foreign
+-- keys and non-unique indexes are left untouched. Do not match by legacy object name.
+DO $remove_global_uniques$
+DECLARE
+  candidate record;
+BEGIN
+  FOR candidate IN
+    SELECT constraint_schema, table_name, constraint_name
+    FROM information_schema.table_constraints tc
+    WHERE tc.table_schema = current_schema()
+      AND tc.constraint_type = 'UNIQUE'
+      AND ((tc.table_name = 'acao' AND (SELECT array_agg(kcu.column_name::text ORDER BY kcu.ordinal_position)
+                                        FROM information_schema.key_column_usage kcu
+                                        WHERE kcu.constraint_schema = tc.constraint_schema
+                                          AND kcu.constraint_name = tc.constraint_name) = ARRAY['ticker']::text[])
+        OR (tc.table_name = 'corretora' AND (SELECT array_agg(kcu.column_name::text ORDER BY kcu.ordinal_position)
+                                             FROM information_schema.key_column_usage kcu
+                                             WHERE kcu.constraint_schema = tc.constraint_schema
+                                               AND kcu.constraint_name = tc.constraint_name) = ARRAY['cnpj']::text[]))
+  LOOP
+    EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I',
+                   candidate.constraint_schema, candidate.table_name, candidate.constraint_name);
+  END LOOP;
+
+  -- A unique index not owned by a constraint can enforce the same obsolete global rule.
+  -- indnkeyatts excludes INCLUDE columns; the sole uniqueness key must be ticker/cnpj.
+  FOR candidate IN
+    SELECT index_schema, table_name, index_name
+    FROM (
+      SELECT ns.nspname AS index_schema, tbl.relname AS table_name, idx.relname AS index_name,
+             i.indexrelid, i.indnkeyatts,
+             array_agg(att.attname::text ORDER BY key_columns.ordinality) FILTER (WHERE key_columns.ordinality <= i.indnkeyatts) AS key_columns
+      FROM pg_index i
+      JOIN pg_class tbl ON tbl.oid = i.indrelid
+      JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      LEFT JOIN pg_constraint c ON c.conindid = i.indexrelid
+      JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS key_columns(attnum, ordinality) ON key_columns.attnum > 0
+      JOIN pg_attribute att ON att.attrelid = tbl.oid AND att.attnum = key_columns.attnum
+      WHERE ns.nspname = current_schema() AND i.indisunique AND NOT i.indisprimary AND c.oid IS NULL
+      GROUP BY ns.nspname, tbl.relname, idx.relname, i.indexrelid, i.indnkeyatts
+    ) standalone
+    WHERE (table_name = 'acao' AND key_columns = ARRAY['ticker']::text[])
+       OR (table_name = 'corretora' AND key_columns = ARRAY['cnpj']::text[])
+  LOOP
+    EXECUTE format('DROP INDEX %I.%I', candidate.index_schema, candidate.index_name);
+  END LOOP;
+END
+$remove_global_uniques$;
+
 DO $required_uniques$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uk_acao_ticker') THEN
-    ALTER TABLE acao ADD CONSTRAINT uk_acao_ticker UNIQUE (ticker);
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uk_acao_ticker_market_owner') THEN
+    ALTER TABLE acao ADD CONSTRAINT uk_acao_ticker_market_owner UNIQUE (ticker, mercado, owner_id);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uk_corretora_cnpj') THEN
-    ALTER TABLE corretora ADD CONSTRAINT uk_corretora_cnpj UNIQUE (cnpj);
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uk_corretora_cnpj_owner') THEN
+    ALTER TABLE corretora ADD CONSTRAINT uk_corretora_cnpj_owner UNIQUE (cnpj, owner_id);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uk_posicao_acao_corretora') THEN
-    ALTER TABLE posicao_carteira ADD CONSTRAINT uk_posicao_acao_corretora UNIQUE (acao_id, corretora_id);
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uk_posicao_acao_corretora_portfolio') THEN
+    ALTER TABLE posicao_carteira ADD CONSTRAINT uk_posicao_acao_corretora_portfolio UNIQUE (acao_id, corretora_id, portfolio_id);
   END IF;
 END
 $required_uniques$;

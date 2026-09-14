@@ -1,8 +1,8 @@
 package com.trabalho.gestao_acoes.services;
 
 import com.trabalho.gestao_acoes.config.AuthProperties;
-import com.trabalho.gestao_acoes.domains.AdminUser;
-import com.trabalho.gestao_acoes.repositories.AdminUserRepository;
+import com.trabalho.gestao_acoes.domains.UserAccount;
+import com.trabalho.gestao_acoes.repositories.UserAccountRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 
@@ -17,7 +17,7 @@ class AuthAttemptServiceTest {
     void originLimitExpiresWithControlledClockAndIgnoresUntrustedForwardedHeader() {
         MutableClock clock=new MutableClock(Instant.parse("2026-09-06T12:00:00Z"));
         AuthProperties properties=new AuthProperties(); properties.setMaxAttempts(5); properties.setAttemptWindow(Duration.ofMinutes(15)); properties.setLockDuration(Duration.ofMinutes(15));
-        AuthAttemptService service=new AuthAttemptService(mock(AdminUserRepository.class),properties,clock);
+        AuthAttemptService service=new AuthAttemptService(mock(UserAccountRepository.class),properties,clock);
         MockHttpServletRequest request=new MockHttpServletRequest(); request.setRemoteAddr("127.0.0.9"); request.addHeader("X-Forwarded-For","203.0.113.99");
         assertThat(service.origin(request)).isEqualTo("127.0.0.9");
         for(int i=0;i<5;i++) service.recordOriginFailure("127.0.0.9");
@@ -30,9 +30,10 @@ class AuthAttemptServiceTest {
     void accountLimitIncrementsBlocksExpiresAndClearsWithControlledClock() {
         MutableClock clock=new MutableClock(Instant.parse("2026-09-06T12:00:00Z"));
         AuthProperties properties=new AuthProperties(); properties.setMaxAttempts(5); properties.setAttemptWindow(Duration.ofMinutes(15)); properties.setLockDuration(Duration.ofMinutes(15));
-        AdminUser user=new AdminUser("atlas-admin", "{bcrypt}not-used", clock.instant());
-        AdminUserRepository repository=mock(AdminUserRepository.class);
+        UserAccount user=new UserAccount("atlas-admin", "admin@atlas.local", "{bcrypt}not-used", clock.instant());
+        UserAccountRepository repository=mock(UserAccountRepository.class);
         when(repository.findForUpdateByUsername("atlas-admin")).thenReturn(java.util.Optional.of(user));
+        when(repository.findByEmail("atlas-admin")).thenReturn(java.util.Optional.empty());
         when(repository.findByUsername("atlas-admin")).thenReturn(java.util.Optional.of(user));
         AuthAttemptService service=new AuthAttemptService(repository,properties,clock);
         for(int i=0;i<5;i++) service.recordAccountFailure("atlas-admin");

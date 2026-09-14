@@ -38,6 +38,15 @@ public class AuthResource {
         contextRepository.saveContext(context,request,response); csrfRepository.saveToken(null,request,response);
         return noStore(new SessionResponse(true,authentication.getName()));
     }
+    @PostMapping("/register")
+    public ResponseEntity<SessionResponse> register(@Valid @RequestBody RegisterRequest body,HttpServletRequest request,HttpServletResponse response){
+        Authentication authentication=authService.register(body.username(),body.email(),body.password(),body.passwordConfirmation(),body.termsAccepted(),request);
+        request.changeSessionId();
+        SecurityContext context=SecurityContextHolder.createEmptyContext(); context.setAuthentication(authentication); SecurityContextHolder.setContext(context);
+        contextRepository.saveContext(context,request,response); csrfRepository.saveToken(null,request,response);
+        return noStore(new SessionResponse(true,authentication.getName()));
+    }
+
     @GetMapping("/session")
     public ResponseEntity<SessionResponse> session(Authentication authentication){ return noStore(new SessionResponse(true,authentication.getName())); }
     @PostMapping("/logout")
@@ -46,16 +55,20 @@ public class AuthResource {
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
     @ExceptionHandler(AuthService.AuthenticationRejectedException.class)
-    public ResponseEntity<AuthFailure> rejected(){ return failure(HttpStatus.UNAUTHORIZED,"AUTHENTICATION_FAILED"); }
+    public ResponseEntity<AuthFailure> rejected(){ return failure(HttpStatus.UNAUTHORIZED,"AUTHENTICATION_FAILED","Não foi possível entrar. Verifique os dados ou tente novamente mais tarde."); }
     @ExceptionHandler(AuthService.AuthenticationLimitedException.class)
-    public ResponseEntity<AuthFailure> limited(){ return failure(HttpStatus.TOO_MANY_REQUESTS,"AUTHENTICATION_TEMPORARILY_UNAVAILABLE"); }
+    public ResponseEntity<AuthFailure> limited(){ return failure(HttpStatus.TOO_MANY_REQUESTS,"AUTHENTICATION_TEMPORARILY_UNAVAILABLE","Não foi possível entrar. Verifique os dados ou tente novamente mais tarde."); }
+    @ExceptionHandler(AuthService.RegistrationConflictException.class)
+    public ResponseEntity<AuthFailure> conflict(){ return failure(HttpStatus.UNAUTHORIZED,"AUTHENTICATION_FAILED","Não foi possível entrar. Verifique os dados ou tente novamente mais tarde."); }
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<AuthFailure> invalidInput(){ return failure(HttpStatus.UNAUTHORIZED,"AUTHENTICATION_FAILED"); }
-    private ResponseEntity<AuthFailure> failure(HttpStatus status,String code){ return ResponseEntity.status(status).cacheControl(CacheControl.noStore()).body(new AuthFailure(code,"Não foi possível entrar. Verifique os dados ou tente novamente mais tarde.")); }
+    public ResponseEntity<AuthFailure> invalidInput(){ return failure(HttpStatus.UNAUTHORIZED,"AUTHENTICATION_FAILED","Não foi possível entrar. Verifique os dados ou tente novamente mais tarde."); }
+    private ResponseEntity<AuthFailure> failure(HttpStatus status,String code,String msg){ return ResponseEntity.status(status).cacheControl(CacheControl.noStore()).body(new AuthFailure(code,msg)); }
     private <T> ResponseEntity<T> noStore(T body){ return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body); }
     private void expireCookie(HttpServletResponse response){ Cookie cookie=new Cookie("ATLAS_SESSION",""); cookie.setHttpOnly(true); cookie.setPath("/"); cookie.setMaxAge(0); response.addCookie(cookie); }
     public record LoginRequest(@NotBlank @Size(max=64) String username,@NotBlank @Size(max=128) String password){}
+    public record RegisterRequest(@NotBlank @Size(min=3, max=64) String username, @NotBlank @Size(max=255) @jakarta.validation.constraints.Email String email, @NotBlank @Size(min=12, max=128) String password, @NotBlank String passwordConfirmation, @jakarta.validation.constraints.AssertTrue boolean termsAccepted){}
     public record SessionResponse(boolean authenticated,String username){}
     public record CsrfResponse(String token,String headerName,String parameterName){}
     public record AuthFailure(String code,String message){}
+
 }

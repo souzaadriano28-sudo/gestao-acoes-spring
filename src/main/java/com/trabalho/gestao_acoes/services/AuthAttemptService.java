@@ -1,8 +1,8 @@
 package com.trabalho.gestao_acoes.services;
 
 import com.trabalho.gestao_acoes.config.AuthProperties;
-import com.trabalho.gestao_acoes.domains.AdminUser;
-import com.trabalho.gestao_acoes.repositories.AdminUserRepository;
+import com.trabalho.gestao_acoes.domains.UserAccount;
+import com.trabalho.gestao_acoes.repositories.UserAccountRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,11 +15,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class AuthAttemptService {
-    private final AdminUserRepository repository; private final AuthProperties properties; private final Clock clock;
+    private final UserAccountRepository repository; private final AuthProperties properties; private final Clock clock;
     private final Map<String, OriginBucket> origins = new ConcurrentHashMap<>();
-    public AuthAttemptService(AdminUserRepository repository, AuthProperties properties, Clock clock) {
+
+    public AuthAttemptService(UserAccountRepository repository, AuthProperties properties, Clock clock) {
         this.repository=repository; this.properties=properties; this.clock=clock;
     }
+
     public String origin(HttpServletRequest request) {
         if (properties.isTrustForwardedHeaders()) {
             String forwarded = request.getHeader("X-Forwarded-For");
@@ -27,21 +29,35 @@ public class AuthAttemptService {
         }
         return request.getRemoteAddr();
     }
+
     public boolean isOriginBlocked(String origin) { return origins.computeIfAbsent(origin, key -> new OriginBucket()).blocked(clock.instant()); }
+
     @Transactional(readOnly = true)
-    public boolean isAccountBlocked(String username) { return repository.findByUsername(username).map(u -> u.isLocked(clock.instant())).orElse(false); }
+    public boolean isAccountBlocked(String username) {
+        return repository.findByEmail(username).or(() -> repository.findByUsername(username)).map(u -> u.isLocked(clock.instant())).orElse(false);
+    }
+
     public void recordOriginFailure(String origin) { origins.computeIfAbsent(origin, key -> new OriginBucket()).failure(clock.instant()); cleanup(); }
+
     @Transactional
     public void recordAccountFailure(String username) {
-        repository.findForUpdateByUsername(username).ifPresent(user -> user.registerFailure(clock.instant(), properties.getMaxAttempts(), properties.getAttemptWindow(), properties.getLockDuration()));
+        repository.findForUpdateByEmail(username).or(() -> repository.findForUpdateByUsername(username))
+            .ifPresent(user -> user.registerFailure(clock.instant(), properties.getMaxAttempts(), properties.getAttemptWindow(), properties.getLockDuration()));
     }
+
     public void clearOrigin(String origin) { origins.remove(origin); }
+
     @Transactional
-    public void clearAccount(String username) { repository.findForUpdateByUsername(username).ifPresent(user -> user.clearFailures(clock.instant())); }
+    public void clearAccount(String username) {
+        repository.findForUpdateByEmail(username).or(() -> repository.findForUpdateByUsername(username))
+            .ifPresent(user -> user.clearFailures(clock.instant()));
+    }
+
     private void cleanup() {
         Instant cutoff = clock.instant().minus(properties.getOriginRetention());
         origins.entrySet().removeIf(e -> e.getValue().lastSeen.isBefore(cutoff));
     }
+
     private final class OriginBucket {
         private final ArrayDeque<Instant> failures = new ArrayDeque<>(); private Instant lockedUntil; private Instant lastSeen = Instant.EPOCH;
         synchronized void failure(Instant now) {

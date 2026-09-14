@@ -34,6 +34,14 @@ public class AcaoResource {
         return ResponseEntity.ok().body(list);
     }
 
+    @GetMapping("/consulta")
+    public ResponseEntity<AcaoDTO> consultar(@RequestParam String ticker, @RequestParam String mercado) {
+        AcaoDTO dto = new AcaoDTO();
+        dto.setTicker(ticker);
+        dto.setMercado(mercado);
+        return ResponseEntity.ok(service.consultar(dto));
+    }
+
     // 3. GET /acoes/{id} (Buscar por ID)
     @GetMapping("/{id}")
     public ResponseEntity<AcaoDTO> findById(@PathVariable Long id) {

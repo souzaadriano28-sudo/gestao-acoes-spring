@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 @FeignClient(name = "twelvedata", url = "${integrations.twelvedata.url:https://api.twelvedata.com}")
 public interface TwelveDataClient {
 
-    @GetMapping("/price")
+    @GetMapping("/quote")
     TwelveDataResponse consultarCotacao(@RequestParam("symbol") String symbol, @RequestParam("apikey") String apiKey);
 }

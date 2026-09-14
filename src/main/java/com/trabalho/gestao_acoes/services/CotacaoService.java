@@ -38,10 +38,12 @@ public class CotacaoService {
         Instant fetchedAt = quote.getFetchedAt() == null ? clock.instant() : quote.getFetchedAt();
         Instant referenceAt = quote.getReferenceAt() == null ? fetchedAt : quote.getReferenceAt();
         String referenceKind = quote.getReferenceAt() == null ? "FETCH_TIME_PROXY" : quote.getReferenceKind();
-        return new CotacaoBolsa(MoneyPolicy.quote(quote.getPrecoAtual()), currency,
+        CotacaoBolsa normalized = new CotacaoBolsa(MoneyPolicy.quote(quote.getPrecoAtual()), currency,
                 required(quote.getSourceType(), "tipo da fonte"),
                 required(quote.getProvider(), "provedor"),
                 referenceAt, fetchedAt, required(referenceKind, "semântica do instante de referência"));
+        normalized.setNomeEmpresa(quote.getNomeEmpresa());
+        return normalized;
     }
 
     private static String required(String value, String field) {

@@ -22,7 +22,7 @@ class LiquibaseMigrationTest {
     void emptyDatabaseMigratesOnceAndReleasesTheLock() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
             assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOGLOCK WHERE LOCKED = FALSE")).isEqualTo(1);
             assertThat(fixture.tableExists("ACAO")).isTrue();
             assertThat(fixture.tableExists("CORRETORA")).isTrue();
@@ -34,9 +34,12 @@ class LiquibaseMigrationTest {
             assertThat(fixture.tableExists("EXCHANGE_RATE_SNAPSHOT")).isTrue();
             assertThat(fixture.columnExists("CORRETORA", "REGULATORY_STATUS")).isTrue();
             assertThat(fixture.indexExists("TRANSACAO", "IDX_TRANSACAO_TIPO_DATA_ID")).isTrue();
+            assertThat(fixture.columnExists("TRANSACAO", "VALOR_TOTAL")).isTrue();
+            assertThat(fixture.columnExists("TRANSACAO", "MOEDA")).isTrue();
+            assertThat(fixture.columnExists("TRANSACAO", "RESULTADO_REALIZADO")).isTrue();
 
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
         }
     }
 
@@ -48,7 +51,7 @@ class LiquibaseMigrationTest {
             assertThatThrownBy(fixture.liquibase::validate)
                     .isInstanceOf(CommandExecutionException.class)
                     .hasCauseInstanceOf(ValidationFailedException.class);
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
         }
     }
 
@@ -56,11 +59,11 @@ class LiquibaseMigrationTest {
     void disposableInitialSchemaRollsBackAndCanBeAppliedAgain() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.liquibase.update();
-            fixture.liquibase.rollback(9, "");
+            fixture.liquibase.rollback(15, "");
             assertThat(fixture.tableExists("ACAO")).isFalse();
             assertThat(fixture.tableExists("ADMIN_USER")).isFalse();
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
         }
     }
 
@@ -68,15 +71,38 @@ class LiquibaseMigrationTest {
     void existingDatabaseUpgradesWithoutReclassifyingLegacyData() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.liquibase.update(6, "");
+            fixture.execute("INSERT INTO admin_user (id, username, password_hash, enabled, failed_attempts, created_at, updated_at, version) VALUES (1, 'admin', 'hash', TRUE, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)");
             fixture.execute("INSERT INTO corretora (razao_social, cep, cnpj, validada_na_cvm) VALUES ('Legada', '01001000', '12345678000199', TRUE)");
 
             fixture.liquibase.update();
 
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(9);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
             assertThat(fixture.text("SELECT regulatory_status FROM corretora WHERE cnpj = '12345678000199'"))
                     .isEqualTo("NOT_CHECKED");
             assertThat(fixture.scalar("SELECT COUNT(*) FROM corretora WHERE validada_na_cvm = TRUE")).isEqualTo(1);
             assertThat(fixture.scalar("SELECT COUNT(*) FROM exchange_rate_snapshot")).isZero();
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM user_account")).isEqualTo(1);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM portfolio")).isEqualTo(1);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM corretora WHERE owner_id = 1")).isEqualTo(1);
+            fixture.execute("INSERT INTO user_account (username, email, password_hash, enabled, failed_attempts, created_at, updated_at, version) VALUES ('next-user', 'next@atlas.local', 'hash', TRUE, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)");
+            assertThat(fixture.scalar("SELECT MAX(id) FROM user_account")).isGreaterThan(1);
+        }
+    }
+
+    @Test
+    void legacyGlobalBrokerConstraintIsRemovedWithoutRemovingScopedUniqueness() throws Exception {
+        try (Fixture fixture = fixture()) {
+            fixture.liquibase.update(11, "");
+            fixture.execute("ALTER TABLE corretora ADD CONSTRAINT uk_corretora_cnpj UNIQUE (cnpj)");
+
+            fixture.liquibase.update();
+            fixture.execute("INSERT INTO user_account (username, email, password_hash, enabled, failed_attempts, created_at, updated_at, version) VALUES ('owner-one', 'owner-one@atlas.local', 'hash', TRUE, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)");
+            fixture.execute("INSERT INTO user_account (username, email, password_hash, enabled, failed_attempts, created_at, updated_at, version) VALUES ('owner-two', 'owner-two@atlas.local', 'hash', TRUE, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)");
+            fixture.execute("INSERT INTO corretora (cnpj, razao_social, cep, validada_na_cvm, regulatory_status, owner_id) VALUES ('02332886000104', 'XP one', '01001000', TRUE, 'NOT_CHECKED', (SELECT id FROM user_account WHERE username = 'owner-one'))");
+            fixture.execute("INSERT INTO corretora (cnpj, razao_social, cep, validada_na_cvm, regulatory_status, owner_id) VALUES ('02332886000104', 'XP two', '01001000', TRUE, 'NOT_CHECKED', (SELECT id FROM user_account WHERE username = 'owner-two'))");
+
+            assertThatThrownBy(() -> fixture.execute("INSERT INTO corretora (cnpj, razao_social, cep, validada_na_cvm, regulatory_status, owner_id) VALUES ('02332886000104', 'XP duplicate', '01001000', TRUE, 'NOT_CHECKED', (SELECT id FROM user_account WHERE username = 'owner-one'))"))
+                    .isInstanceOf(java.sql.SQLException.class);
         }
     }
 

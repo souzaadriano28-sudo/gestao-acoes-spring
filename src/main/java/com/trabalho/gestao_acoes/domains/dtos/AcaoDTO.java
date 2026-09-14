@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Null;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.Instant;
 
 public class AcaoDTO implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -23,6 +24,11 @@ public class AcaoDTO implements Serializable {
     private String moeda;
     private BigDecimal cotacaoAtual;
     private LocalDateTime dataHoraCotacao;
+    private String quoteSourceType;
+    private String quoteProvider;
+    private Instant quoteReferenceAt;
+    private Instant quoteFetchedAt;
+    private String quoteReferenceKind;
 
     public AcaoDTO() {
     }
@@ -47,4 +53,14 @@ public class AcaoDTO implements Serializable {
 
     public LocalDateTime getDataHoraCotacao() { return dataHoraCotacao; }
     public void setDataHoraCotacao(LocalDateTime dataHoraCotacao) { this.dataHoraCotacao = dataHoraCotacao; }
+    public String getQuoteSourceType() { return quoteSourceType; }
+    public void setQuoteSourceType(String quoteSourceType) { this.quoteSourceType = quoteSourceType; }
+    public String getQuoteProvider() { return quoteProvider; }
+    public void setQuoteProvider(String quoteProvider) { this.quoteProvider = quoteProvider; }
+    public Instant getQuoteReferenceAt() { return quoteReferenceAt; }
+    public void setQuoteReferenceAt(Instant quoteReferenceAt) { this.quoteReferenceAt = quoteReferenceAt; }
+    public Instant getQuoteFetchedAt() { return quoteFetchedAt; }
+    public void setQuoteFetchedAt(Instant quoteFetchedAt) { this.quoteFetchedAt = quoteFetchedAt; }
+    public String getQuoteReferenceKind() { return quoteReferenceKind; }
+    public void setQuoteReferenceKind(String quoteReferenceKind) { this.quoteReferenceKind = quoteReferenceKind; }
 }

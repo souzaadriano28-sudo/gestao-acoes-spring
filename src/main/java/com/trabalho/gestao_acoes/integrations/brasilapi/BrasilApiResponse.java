@@ -14,7 +14,9 @@ public class BrasilApiResponse {
     private String descricaoSituacaoCadastral;
 
     @JsonProperty("cnae_fiscal")
-    private Integer cnaeFiscal; // Usaremos isso para a regra da CVM!
+    private Integer cnaeFiscal;
+
+    private String cep;
 
     public BrasilApiResponse() {
     }
@@ -30,4 +32,6 @@ public class BrasilApiResponse {
 
     public Integer getCnaeFiscal() { return cnaeFiscal; }
     public void setCnaeFiscal(Integer cnaeFiscal) { this.cnaeFiscal = cnaeFiscal; }
+    public String getCep() { return cep; }
+    public void setCep(String cep) { this.cep = cep; }
 }

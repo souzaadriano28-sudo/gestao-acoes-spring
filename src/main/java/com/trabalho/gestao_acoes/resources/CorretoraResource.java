@@ -1,6 +1,10 @@
 package com.trabalho.gestao_acoes.resources;
 
 import com.trabalho.gestao_acoes.domains.dtos.CorretoraDTO;
+import com.trabalho.gestao_acoes.domains.dtos.broker.BrokerAddressPreviewDTO;
+import com.trabalho.gestao_acoes.domains.dtos.broker.BrokerCepConsultRequest;
+import com.trabalho.gestao_acoes.domains.dtos.broker.BrokerCnpjConsultRequest;
+import com.trabalho.gestao_acoes.domains.dtos.broker.BrokerCnpjPreviewDTO;
 import com.trabalho.gestao_acoes.services.CorretoraService;
 import com.trabalho.gestao_acoes.services.RegulatoryEvidenceService;
 import jakarta.validation.Valid;
@@ -31,6 +35,16 @@ public class CorretoraResource {
                 .buildAndExpand(newDto.getId()).toUri();
 
         return ResponseEntity.created(uri).body(newDto);
+    }
+
+    @PostMapping("/consultas/cnpj")
+    public ResponseEntity<BrokerCnpjPreviewDTO> consultCnpj(@Valid @RequestBody BrokerCnpjConsultRequest request) {
+        return ResponseEntity.ok(service.consultCnpj(request.cnpj()));
+    }
+
+    @PostMapping("/consultas/cep")
+    public ResponseEntity<BrokerAddressPreviewDTO> consultCep(@Valid @RequestBody BrokerCepConsultRequest request) {
+        return ResponseEntity.ok(service.consultCep(request.cep()));
     }
 
     // 2. GET /corretoras (Listar todas)

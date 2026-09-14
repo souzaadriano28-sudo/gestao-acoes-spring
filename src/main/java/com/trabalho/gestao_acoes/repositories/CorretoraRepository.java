@@ -11,15 +11,17 @@ import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.QueryHints;
 
 import java.util.Optional;
+import java.util.List;
 
 @Repository
 public interface CorretoraRepository extends JpaRepository<Corretora, Long> {
 
-    // RF06 e RF12: Busca uma corretora específica pelo CNPJ para evitar duplicidade
-    Optional<Corretora> findByCnpj(String cnpj);
+    Optional<Corretora> findByCnpjAndOwnerId(String cnpj, Long ownerId);
+    Optional<Corretora> findByIdAndOwnerId(Long id, Long ownerId);
+    List<Corretora> findAllByOwnerId(Long ownerId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "1000"))
-    @Query("select c from Corretora c where c.id = :id")
-    Optional<Corretora> findByIdForUpdate(@Param("id") Long id);
+    @Query("select c from Corretora c where c.id = :id and c.owner.id = :ownerId")
+    Optional<Corretora> findByIdAndOwnerIdForUpdate(@Param("id") Long id, @Param("ownerId") Long ownerId);
 }

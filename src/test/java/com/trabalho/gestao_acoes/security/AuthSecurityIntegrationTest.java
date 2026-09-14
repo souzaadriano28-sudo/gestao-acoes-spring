@@ -1,6 +1,6 @@
 package com.trabalho.gestao_acoes.security;
 
-import com.trabalho.gestao_acoes.repositories.AdminUserRepository;
+import com.trabalho.gestao_acoes.repositories.UserAccountRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,19 +18,20 @@ import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:gestaoacoes_auth_security;MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
 @ActiveProfiles("test")
 @ExtendWith(OutputCaptureExtension.class)
 class AuthSecurityIntegrationTest {
     @Autowired WebApplicationContext context;
     @Autowired ObjectMapper mapper;
-    @Autowired AdminUserRepository users;
+    @Autowired UserAccountRepository users;
     private MockMvc mvc;
 
     @BeforeEach
@@ -68,6 +69,7 @@ class AuthSecurityIntegrationTest {
         MockHttpSession authenticated=(MockHttpSession)login.getRequest().getSession(false);
         assertThat(authenticated.getId()).isNotEqualTo(oldId);
         mvc.perform(get("/auth/session").session(authenticated)).andExpect(status().isOk()).andExpect(jsonPath("$.username").value("atlas-test-admin"));
+        mvc.perform(get("/corretoras").session(authenticated)).andExpect(status().isOk());
         mvc.perform(get("/acoes").session(authenticated)).andExpect(status().isOk());
 
         mvc.perform(post("/auth/logout").session(authenticated).header("X-CSRF-TOKEN",initial.token()))
@@ -124,8 +126,34 @@ class AuthSecurityIntegrationTest {
     void bootstrapStoresOnlyAdaptiveHashAndDoesNotReplaceIt() {
         var user=users.findByUsername("atlas-test-admin").orElseThrow(); String hash=user.getPasswordHash();
         assertThat(hash).startsWith("{").doesNotContain("Academic-test-password-123!");
-        assertThat(users.count()).isEqualTo(1);
+        assertThat(users.count()).isGreaterThanOrEqualTo(1);
         assertThat(users.findByUsername("atlas-test-admin").orElseThrow().getPasswordHash()).isEqualTo(hash);
+    }
+
+    @Test
+    void registrationRequiresAcceptedTermsAndDoesNotExposeDuplicateAccounts() throws Exception {
+        String username = "register-" + UUID.randomUUID().toString().substring(0, 12);
+        String body = mapper.writeValueAsString(new Registration(username, username + "@example.test",
+                "Academic-test-password-123!", "Academic-test-password-123!", true));
+        CsrfFixture initial = csrf("10.0.0.41");
+        mvc.perform(post("/auth/register").session(initial.session()).header("X-CSRF-TOKEN", initial.token())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.authenticated").value(true));
+        MockHttpSession session = initial.session();
+        String renewed = token(mvc.perform(get("/auth/csrf").session(session)).andExpect(status().isOk()).andReturn());
+        String duplicate = mvc.perform(post("/auth/register").session(session).header("X-CSRF-TOKEN", renewed)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized()).andReturn().getResponse().getContentAsString();
+        assertThat(mapper.readTree(duplicate).get("code").asText()).isEqualTo("AUTHENTICATION_FAILED");
+        assertThat(mapper.readTree(duplicate).get("message").asText())
+                .isEqualTo("Não foi possível entrar. Verifique os dados ou tente novamente mais tarde.");
+
+        CsrfFixture terms = csrf("10.0.0.42");
+        mvc.perform(post("/auth/register").session(terms.session()).header("X-CSRF-TOKEN", terms.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new Registration("terms-" + UUID.randomUUID().toString().substring(0, 12),
+                                "terms-" + UUID.randomUUID() + "@example.test", "Academic-test-password-123!", "Academic-test-password-123!", false))))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("AUTHENTICATION_FAILED"));
     }
 
     private CsrfFixture csrf(String origin) throws Exception {
@@ -136,5 +164,6 @@ class AuthSecurityIntegrationTest {
     private String token(MvcResult result) throws Exception { return mapper.readTree(result.getResponse().getContentAsByteArray()).get("token").asText(); }
     private String credentials(String username,String password) throws Exception { return mapper.writeValueAsString(new Credentials(username,password)); }
     private record Credentials(String username,String password){}
+    private record Registration(String username, String email, String password, String passwordConfirmation, boolean termsAccepted){}
     private record CsrfFixture(MockHttpSession session,String token){}
 }
