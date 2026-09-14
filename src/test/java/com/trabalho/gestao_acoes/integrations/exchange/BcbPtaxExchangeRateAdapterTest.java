@@ -38,6 +38,21 @@ class BcbPtaxExchangeRateAdapterTest {
     }
 
     @Test
+    void currentBcbPayloadWithoutTipoBoletimStillSelectsTheLatestOfficialObservation() {
+        BcbPtaxClient client = mock(BcbPtaxClient.class);
+        ExchangeRateSnapshotRepository repository = mock(ExchangeRateSnapshotRepository.class);
+        when(repository.findByBaseCurrencyAndQuoteCurrency("USD", "BRL")).thenReturn(Optional.empty());
+        when(client.period(anyString(), anyString(), eq("json"), eq(100))).thenReturn(new BcbPtaxResponse(List.of(
+                new BcbPtaxResponse.Quote(new BigDecimal("5.15"), "2026-09-05 13:01:00.000000", null),
+                new BcbPtaxResponse.Quote(new BigDecimal("5.16"), "2026-09-05 13:05:00.000000", null))));
+
+        var rate = adapter(client, repository).find("USD", "BRL").orElseThrow();
+
+        assertThat(rate.rate()).isEqualByComparingTo("5.16000000");
+        assertThat(rate.referenceAt()).isEqualTo(Instant.parse("2026-09-05T16:05:00Z"));
+    }
+
+    @Test
     void timeoutOrRateLimitFallsBackToPersistedObservationWithoutRefreshingItsAge() {
         BcbPtaxClient client = mock(BcbPtaxClient.class);
         ExchangeRateSnapshotRepository repository = mock(ExchangeRateSnapshotRepository.class);

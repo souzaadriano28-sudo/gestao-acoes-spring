@@ -22,6 +22,9 @@ public class PosicaoCarteira implements Serializable {
     @Column(nullable = false, precision = 19, scale = 8)
     private BigDecimal precoMedio;
 
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal resultadoRealizado = BigDecimal.ZERO;
+
     @ManyToOne
     @JoinColumn(name = "acao_id", nullable = false)
     private Acao acao;
@@ -54,6 +57,8 @@ public class PosicaoCarteira implements Serializable {
 
     public BigDecimal getPrecoMedio() { return precoMedio; }
     public void setPrecoMedio(BigDecimal precoMedio) { this.precoMedio = precoMedio; }
+    public BigDecimal getResultadoRealizado() { return resultadoRealizado; }
+    public void setResultadoRealizado(BigDecimal resultadoRealizado) { this.resultadoRealizado = resultadoRealizado; }
 
     public Acao getAcao() { return acao; }
     public void setAcao(Acao acao) { this.acao = acao; }

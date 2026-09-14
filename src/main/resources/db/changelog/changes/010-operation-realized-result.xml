@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+ <changeSet id="010-operation-realized-result" author="atlas-carteira">
+  <addColumn tableName="transacao"><column name="resultado_realizado" type="DECIMAL(19,8)" defaultValueNumeric="0"><constraints nullable="false"/></column></addColumn>
+  <rollback><dropColumn tableName="transacao" columnName="resultado_realizado"/></rollback>
+ </changeSet>
+</databaseChangeLog>

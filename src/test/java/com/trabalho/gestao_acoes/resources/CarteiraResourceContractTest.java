@@ -66,6 +66,25 @@ class CarteiraResourceContractTest {
     }
 
     @Test
+    void dashboardContractExposesIndependentNativeSummariesWhenPtaxIsUnavailable() throws Exception {
+        MoneyMetricDTO unavailableBrl = MoneyMetricDTO.unavailable("BRL", "EXCHANGE_RATE_UNAVAILABLE");
+        CurrencySummaryDTO brl = new CurrencySummaryDTO("BRL", MoneyMetricDTO.available(new BigDecimal("490.00"), "BRL"),
+                MoneyMetricDTO.available(new BigDecimal("531.73"), "BRL"), MoneyMetricDTO.available(new BigDecimal("-41.73"), "BRL"), PercentageMetricDTO.available(new BigDecimal("-7.8475")));
+        CurrencySummaryDTO usd = new CurrencySummaryDTO("USD", MoneyMetricDTO.stale(new BigDecimal("332.27"), "USD", "QUOTE_FRESHNESS_EXCEEDED"),
+                MoneyMetricDTO.available(new BigDecimal("332.26"), "USD"), MoneyMetricDTO.stale(new BigDecimal("0.01"), "USD", "QUOTE_FRESHNESS_EXCEEDED"), new PercentageMetricDTO(Availability.STALE, new BigDecimal("0.0030"), "QUOTE_FRESHNESS_EXCEEDED"));
+        when(reads.dashboard()).thenReturn(new DashboardDTO(Instant.parse("2026-09-06T12:00:00Z"), "BRL", 2,
+                unavailableBrl, unavailableBrl, unavailableBrl, PercentageMetricDTO.unavailable("EXCHANGE_RATE_UNAVAILABLE"),
+                List.of(), List.of(), List.of(), new ExchangeProvenanceDTO(Availability.UNAVAILABLE, "USD", "BRL", null, null, null, null, null, null, "EXCHANGE_RATE_UNAVAILABLE"), List.of(brl, usd)));
+        mvc.perform(get("/carteira/dashboard")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.nativeCurrencySummaries[0].currency").value("BRL"))
+                .andExpect(jsonPath("$.nativeCurrencySummaries[0].patrimony.value").value(490.00))
+                .andExpect(jsonPath("$.nativeCurrencySummaries[1].currency").value("USD"))
+                .andExpect(jsonPath("$.nativeCurrencySummaries[1].patrimony.value").value(332.27))
+                .andExpect(jsonPath("$.nativeCurrencySummaries[1].patrimony.availability").value("STALE"))
+                .andExpect(jsonPath("$.patrimony.availability").value("UNAVAILABLE"));
+    }
+
+    @Test
     void detailedAndMovementEndpointsForwardPagingAndFilters() throws Exception {
         when(reads.detailedPositions(1, 10, "BRASIL", 7L)).thenReturn(new PageDTO<>(List.of(), 1, 10, 0, 0));
         when(reads.movements(0, 5, "COMPRA", "PETR4", 7L, null, null)).thenReturn(new PageDTO<>(List.of(), 0, 5, 0, 0));

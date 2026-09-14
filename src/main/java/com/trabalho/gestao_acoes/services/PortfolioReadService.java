@@ -93,16 +93,19 @@ public class PortfolioReadService {
             MoneyMetricDTO zero = MoneyMetricDTO.available(new BigDecimal("0.00"), PRESENTATION_CURRENCY);
             return new DashboardDTO(asOf, PRESENTATION_CURRENCY, 0, zero, zero, zero,
                     PercentageMetricDTO.unavailable("RESULT_PERCENTAGE_NOT_APPLICABLE_TO_EMPTY_PORTFOLIO"),
-                    details, recent, List.of(), unavailableExchange("NOT_REQUIRED_FOR_EMPTY_PORTFOLIO"));
+                    details, recent, List.of(), unavailableExchange("NOT_REQUIRED_FOR_EMPTY_PORTFOLIO"), List.of());
         }
 
 
         boolean needsUsd = entities.stream().anyMatch(p -> "USD".equals(p.getAcao().getMoeda()));
         ExchangeState exchange = exchangeState(needsUsd);
+        List<CurrencySummaryDTO> nativeSummaries = nativeSummaries(details);
         BigDecimal totalCost = BigDecimal.ZERO;
         BigDecimal totalMarket = BigDecimal.ZERO;
         boolean costComplete = true;
         boolean marketComplete = true;
+        boolean costStale = exchange.dto().availability() == Availability.STALE;
+        boolean marketStale = costStale;
         for (int i = 0; i < entities.size(); i++) {
             PosicaoCarteira entity = entities.get(i);
             DetailedPositionDTO detail = details.get(i);
@@ -114,26 +117,66 @@ public class PortfolioReadService {
             }
             BigDecimal nativeCost = entity.getPrecoMedio().multiply(BigDecimal.valueOf(entity.getQuantidadeTotal()));
             totalCost = totalCost.add(nativeCost.multiply(rate));
-            if (detail.marketValue().availability() != Availability.AVAILABLE) marketComplete = false;
+            if (detail.marketValue().availability() == Availability.UNAVAILABLE || detail.marketValue().value() == null) marketComplete = false;
             else {
-                BigDecimal nativeMarket = entity.getAcao().getCotacaoAtual().multiply(BigDecimal.valueOf(entity.getQuantidadeTotal()));
-                totalMarket = totalMarket.add(nativeMarket.multiply(rate));
+                if (detail.marketValue().availability() == Availability.STALE) marketStale = true;
+                totalMarket = totalMarket.add(detail.marketValue().value().multiply(rate));
             }
         }
-        MoneyMetricDTO cost = costComplete ? MoneyMetricDTO.available(MoneyPolicy.total(totalCost), PRESENTATION_CURRENCY)
+        MoneyMetricDTO cost = costComplete ? moneyWithFreshness(MoneyPolicy.total(totalCost), costStale)
                 : MoneyMetricDTO.unavailable(PRESENTATION_CURRENCY, "EXCHANGE_RATE_UNAVAILABLE");
-        MoneyMetricDTO patrimony = marketComplete ? MoneyMetricDTO.available(MoneyPolicy.total(totalMarket), PRESENTATION_CURRENCY)
+        MoneyMetricDTO patrimony = marketComplete ? moneyWithFreshness(MoneyPolicy.total(totalMarket), marketStale)
                 : MoneyMetricDTO.unavailable(PRESENTATION_CURRENCY, "QUOTE_OR_EXCHANGE_UNAVAILABLE");
         MoneyMetricDTO result = costComplete && marketComplete
-                ? MoneyMetricDTO.available(MoneyPolicy.total(totalMarket.subtract(totalCost)), PRESENTATION_CURRENCY)
+                ? moneyWithFreshness(MoneyPolicy.total(totalMarket.subtract(totalCost)), marketStale)
                 : MoneyMetricDTO.unavailable(PRESENTATION_CURRENCY, "DEPENDENT_TOTAL_UNAVAILABLE");
         PercentageMetricDTO percentage = result.availability() == Availability.AVAILABLE && totalCost.signum() > 0
                 ? PercentageMetricDTO.available(totalMarket.subtract(totalCost).multiply(new BigDecimal("100"))
                         .divide(totalCost, 4, RoundingMode.HALF_UP))
-                : PercentageMetricDTO.unavailable("DEPENDENT_TOTAL_UNAVAILABLE");
+                : result.availability() == Availability.STALE && totalCost.signum() > 0
+                    ? new PercentageMetricDTO(Availability.STALE, totalMarket.subtract(totalCost).multiply(new BigDecimal("100"))
+                        .divide(totalCost, 4, RoundingMode.HALF_UP), "QUOTE_FRESHNESS_EXCEEDED")
+                    : PercentageMetricDTO.unavailable("DEPENDENT_TOTAL_UNAVAILABLE");
         List<QuoteProvenanceDTO> sources = details.stream().map(DetailedPositionDTO::quoteProvenance).distinct().toList();
         return new DashboardDTO(asOf, PRESENTATION_CURRENCY, entities.size(), patrimony, cost, result,
-                percentage, details, recent, sources, exchange.dto());
+                percentage, details, recent, sources, exchange.dto(), nativeSummaries);
+    }
+
+    private List<CurrencySummaryDTO> nativeSummaries(List<DetailedPositionDTO> details) {
+        Map<String, List<DetailedPositionDTO>> byCurrency = new TreeMap<>();
+        for (DetailedPositionDTO detail : details) byCurrency.computeIfAbsent(detail.nativeCurrency(), ignored -> new ArrayList<>()).add(detail);
+        return byCurrency.entrySet().stream().map(entry -> nativeSummary(entry.getKey(), entry.getValue())).toList();
+    }
+
+    private CurrencySummaryDTO nativeSummary(String currency, List<DetailedPositionDTO> values) {
+        BigDecimal cost = BigDecimal.ZERO;
+        BigDecimal market = BigDecimal.ZERO;
+        boolean marketAvailable = true;
+        boolean stale = false;
+        for (DetailedPositionDTO detail : values) {
+            cost = cost.add(detail.cost().value());
+            if (detail.marketValue().value() == null || detail.marketValue().availability() == Availability.UNAVAILABLE) {
+                marketAvailable = false;
+            } else {
+                market = market.add(detail.marketValue().value());
+                stale |= detail.marketValue().availability() == Availability.STALE;
+            }
+        }
+        MoneyMetricDTO nativeCost = MoneyMetricDTO.available(MoneyPolicy.total(cost), currency);
+        if (!marketAvailable) return new CurrencySummaryDTO(currency,
+                MoneyMetricDTO.unavailable(currency, "QUOTE_UNAVAILABLE"), nativeCost,
+                MoneyMetricDTO.unavailable(currency, "DEPENDENT_TOTAL_UNAVAILABLE"),
+                PercentageMetricDTO.unavailable("DEPENDENT_TOTAL_UNAVAILABLE"));
+        BigDecimal totalMarket = MoneyPolicy.total(market);
+        BigDecimal result = MoneyPolicy.total(market.subtract(cost));
+        MoneyMetricDTO nativeMarket = stale ? MoneyMetricDTO.stale(totalMarket, currency, "QUOTE_FRESHNESS_EXCEEDED") : MoneyMetricDTO.available(totalMarket, currency);
+        MoneyMetricDTO nativeResult = stale ? MoneyMetricDTO.stale(result, currency, "QUOTE_FRESHNESS_EXCEEDED") : MoneyMetricDTO.available(result, currency);
+        PercentageMetricDTO percentage = cost.signum() > 0
+                ? new PercentageMetricDTO(stale ? Availability.STALE : Availability.AVAILABLE,
+                        market.subtract(cost).multiply(new BigDecimal("100")).divide(cost, 4, RoundingMode.HALF_UP),
+                        stale ? "QUOTE_FRESHNESS_EXCEEDED" : null)
+                : PercentageMetricDTO.unavailable("RESULT_PERCENTAGE_NOT_APPLICABLE");
+        return new CurrencySummaryDTO(currency, nativeMarket, nativeCost, nativeResult, percentage);
     }
 
     private DetailedPositionDTO position(PosicaoCarteira p) {
@@ -144,10 +187,12 @@ public class PortfolioReadService {
         MoneyMetricDTO currentQuote;
         MoneyMetricDTO market;
         MoneyMetricDTO result;
+        PercentageMetricDTO percentage;
         if (provenance.availability() == Availability.UNAVAILABLE) {
             currentQuote = MoneyMetricDTO.unavailable(currency, provenance.reason());
             market = MoneyMetricDTO.unavailable(currency, provenance.reason());
             result = MoneyMetricDTO.unavailable(currency, provenance.reason());
+            percentage = PercentageMetricDTO.unavailable(provenance.reason());
         } else {
             BigDecimal quote = p.getAcao().getCotacaoAtual();
             BigDecimal marketValue = MoneyPolicy.total(quote.multiply(BigDecimal.valueOf(p.getQuantidadeTotal())));
@@ -155,16 +200,20 @@ public class PortfolioReadService {
                 currentQuote = MoneyMetricDTO.stale(quote, currency, provenance.reason());
                 market = MoneyMetricDTO.stale(marketValue, currency, provenance.reason());
                 result = MoneyMetricDTO.stale(MoneyPolicy.total(marketValue.subtract(costValue)), currency, provenance.reason());
+                percentage = new PercentageMetricDTO(Availability.STALE,
+                        marketValue.subtract(costValue).multiply(new BigDecimal("100")).divide(costValue, 4, RoundingMode.HALF_UP),
+                        "QUOTE_FRESHNESS_EXCEEDED");
             } else {
                 currentQuote = MoneyMetricDTO.available(quote, currency);
                 market = MoneyMetricDTO.available(marketValue, currency);
                 result = MoneyMetricDTO.available(MoneyPolicy.total(marketValue.subtract(costValue)), currency);
+                percentage = PercentageMetricDTO.available(marketValue.subtract(costValue).multiply(new BigDecimal("100")).divide(costValue, 4, RoundingMode.HALF_UP));
             }
         }
-        return new DetailedPositionDTO(p.getId(), p.getAcao().getId(), p.getAcao().getTicker(), p.getAcao().getMercado(),
+        return new DetailedPositionDTO(p.getId(), p.getAcao().getId(), p.getAcao().getTicker(), p.getAcao().getNomeEmpresa(), p.getAcao().getMercado(),
                 p.getCorretora().getId(), p.getCorretora().getRazaoSocial(), p.getQuantidadeTotal(), currency,
                 MoneyMetricDTO.available(average, currency), MoneyMetricDTO.available(costValue, currency),
-                currentQuote, market, result, provenance);
+                currentQuote, market, result, percentage, MoneyMetricDTO.available(p.getResultadoRealizado(), currency), provenance);
     }
 
     private QuoteProvenanceDTO quoteProvenance(Acao asset) {
@@ -208,11 +257,15 @@ public class PortfolioReadService {
         ExchangeProvenanceDTO dto = new ExchangeProvenanceDTO(availability, rate.baseCurrency(), rate.quoteCurrency(),
                 rate.rate(), rate.sourceType(), rate.provider(), rate.referenceAt(), rate.fetchedAt(), rate.referenceKind(),
                 stale ? "EXCHANGE_FRESHNESS_EXCEEDED" : null);
-        return new ExchangeState(stale ? null : rate.rate(), dto);
+        return new ExchangeState(rate.rate(), dto);
     }
 
     private static ExchangeProvenanceDTO unavailableExchange(String reason) {
         return new ExchangeProvenanceDTO(Availability.UNAVAILABLE, "USD", "BRL", null, null, null, null, null, null, reason);
+    }
+    private static MoneyMetricDTO moneyWithFreshness(BigDecimal value, boolean stale) {
+        return stale ? MoneyMetricDTO.stale(value, PRESENTATION_CURRENCY, "QUOTE_FRESHNESS_EXCEEDED")
+                : MoneyMetricDTO.available(value, PRESENTATION_CURRENCY);
     }
     private static Duration positive(Duration value, String name) {
         if (value == null || value.isZero() || value.isNegative()) throw new IllegalArgumentException(name + " must be positive");

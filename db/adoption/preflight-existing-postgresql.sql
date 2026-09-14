@@ -28,11 +28,14 @@ LANGUAGE sql IMMUTABLE;
 
 -- Diagnostic rows are emitted before the blocking checks below. Resolve every row explicitly.
 SELECT 'canonical ticker collision' AS issue, string_agg(id::text, ',' ORDER BY id) AS record_ids
-FROM acao GROUP BY upper(btrim(ticker)) HAVING count(*) > 1;
+FROM acao GROUP BY owner_id, upper(btrim(ticker)),
+  CASE upper(btrim(mercado)) WHEN 'NACIONAL' THEN 'BRASIL' WHEN 'BRASIL' THEN 'BRASIL'
+    WHEN 'INTERNACIONAL' THEN 'AMERICANO' WHEN 'AMERICANO' THEN 'AMERICANO' END
+HAVING count(*) > 1;
 SELECT 'canonical CNPJ collision' AS issue, string_agg(id::text, ',' ORDER BY id) AS record_ids
-FROM corretora GROUP BY regexp_replace(btrim(cnpj), '[./-]', '', 'g') HAVING count(*) > 1;
+FROM corretora GROUP BY owner_id, regexp_replace(btrim(cnpj), '[./-]', '', 'g') HAVING count(*) > 1;
 SELECT 'duplicate position' AS issue, string_agg(id::text, ',' ORDER BY id) AS record_ids
-FROM posicao_carteira GROUP BY acao_id, corretora_id HAVING count(*) > 1;
+FROM posicao_carteira GROUP BY portfolio_id, acao_id, corretora_id HAVING count(*) > 1;
 SELECT 'invalid legacy identifier' AS issue, id AS record_id
 FROM acao WHERE upper(btrim(ticker)) !~ '^[A-Z]{1,5}$|^[A-Z]{4}[0-9]{1,2}$'
 UNION ALL
@@ -43,7 +46,12 @@ BEGIN
   IF EXISTS (SELECT 1 FROM acao WHERE upper(btrim(ticker)) !~ '^[A-Z]{1,5}$|^[A-Z]{4}[0-9]{1,2}$') THEN
     RAISE EXCEPTION 'preflight: invalid ticker';
   END IF;
-  IF EXISTS (SELECT upper(btrim(ticker)) FROM acao GROUP BY 1 HAVING count(*) > 1) THEN
+  IF EXISTS (
+    SELECT owner_id, upper(btrim(ticker)),
+      CASE upper(btrim(mercado)) WHEN 'NACIONAL' THEN 'BRASIL' WHEN 'BRASIL' THEN 'BRASIL'
+        WHEN 'INTERNACIONAL' THEN 'AMERICANO' WHEN 'AMERICANO' THEN 'AMERICANO' END
+    FROM acao GROUP BY 1,2,3 HAVING count(*) > 1
+  ) THEN
     RAISE EXCEPTION 'preflight: canonical ticker collision';
   END IF;
   IF EXISTS (SELECT 1 FROM acao WHERE upper(btrim(mercado)) NOT IN ('BRASIL','NACIONAL','AMERICANO','INTERNACIONAL')) THEN
@@ -52,10 +60,10 @@ BEGIN
   IF EXISTS (SELECT 1 FROM corretora WHERE NOT pg_temp.valid_cnpj(cnpj)) THEN
     RAISE EXCEPTION 'preflight: invalid CNPJ format or check digits';
   END IF;
-  IF EXISTS (SELECT regexp_replace(btrim(cnpj), '[./-]', '', 'g') FROM corretora GROUP BY 1 HAVING count(*) > 1) THEN
+  IF EXISTS (SELECT owner_id, regexp_replace(btrim(cnpj), '[./-]', '', 'g') FROM corretora GROUP BY 1,2 HAVING count(*) > 1) THEN
     RAISE EXCEPTION 'preflight: canonical CNPJ collision';
   END IF;
-  IF EXISTS (SELECT acao_id, corretora_id FROM posicao_carteira GROUP BY 1,2 HAVING count(*) > 1) THEN
+  IF EXISTS (SELECT portfolio_id, acao_id, corretora_id FROM posicao_carteira GROUP BY 1,2,3 HAVING count(*) > 1) THEN
     RAISE EXCEPTION 'preflight: duplicate portfolio position';
   END IF;
   IF EXISTS (SELECT 1 FROM transacao WHERE quantidade <= 0 OR preco_unitario <= 0

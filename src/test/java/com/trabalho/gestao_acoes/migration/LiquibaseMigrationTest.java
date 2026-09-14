@@ -22,7 +22,7 @@ class LiquibaseMigrationTest {
     void emptyDatabaseMigratesOnceAndReleasesTheLock() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(12);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
             assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOGLOCK WHERE LOCKED = FALSE")).isEqualTo(1);
             assertThat(fixture.tableExists("ACAO")).isTrue();
             assertThat(fixture.tableExists("CORRETORA")).isTrue();
@@ -34,9 +34,12 @@ class LiquibaseMigrationTest {
             assertThat(fixture.tableExists("EXCHANGE_RATE_SNAPSHOT")).isTrue();
             assertThat(fixture.columnExists("CORRETORA", "REGULATORY_STATUS")).isTrue();
             assertThat(fixture.indexExists("TRANSACAO", "IDX_TRANSACAO_TIPO_DATA_ID")).isTrue();
+            assertThat(fixture.columnExists("TRANSACAO", "VALOR_TOTAL")).isTrue();
+            assertThat(fixture.columnExists("TRANSACAO", "MOEDA")).isTrue();
+            assertThat(fixture.columnExists("TRANSACAO", "RESULTADO_REALIZADO")).isTrue();
 
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(12);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
         }
     }
 
@@ -48,7 +51,7 @@ class LiquibaseMigrationTest {
             assertThatThrownBy(fixture.liquibase::validate)
                     .isInstanceOf(CommandExecutionException.class)
                     .hasCauseInstanceOf(ValidationFailedException.class);
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(12);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
         }
     }
 
@@ -56,11 +59,11 @@ class LiquibaseMigrationTest {
     void disposableInitialSchemaRollsBackAndCanBeAppliedAgain() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.liquibase.update();
-            fixture.liquibase.rollback(12, "");
+            fixture.liquibase.rollback(15, "");
             assertThat(fixture.tableExists("ACAO")).isFalse();
             assertThat(fixture.tableExists("ADMIN_USER")).isFalse();
             fixture.liquibase.update();
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(12);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
         }
     }
 
@@ -73,7 +76,7 @@ class LiquibaseMigrationTest {
 
             fixture.liquibase.update();
 
-            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(12);
+            assertThat(fixture.scalar("SELECT COUNT(*) FROM DATABASECHANGELOG")).isEqualTo(15);
             assertThat(fixture.text("SELECT regulatory_status FROM corretora WHERE cnpj = '12345678000199'"))
                     .isEqualTo("NOT_CHECKED");
             assertThat(fixture.scalar("SELECT COUNT(*) FROM corretora WHERE validada_na_cvm = TRUE")).isEqualTo(1);

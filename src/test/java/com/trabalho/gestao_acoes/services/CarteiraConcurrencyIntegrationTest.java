@@ -3,6 +3,9 @@ package com.trabalho.gestao_acoes.services;
 import com.trabalho.gestao_acoes.domains.Acao;
 import com.trabalho.gestao_acoes.domains.Corretora;
 import com.trabalho.gestao_acoes.domains.dtos.AcaoDTO;
+import com.trabalho.gestao_acoes.domains.dtos.OperationDTO;
+import com.trabalho.gestao_acoes.domains.dtos.OperationRequestDTO;
+import com.trabalho.gestao_acoes.domains.enums.TipoTransacao;
 import com.trabalho.gestao_acoes.resources.AcaoResource;
 import com.trabalho.gestao_acoes.resources.exceptions.ResourceExceptionHandler;
 import com.trabalho.gestao_acoes.repositories.AcaoRepository;
@@ -12,6 +15,7 @@ import com.trabalho.gestao_acoes.repositories.TransacaoRepository;
 import com.trabalho.gestao_acoes.repositories.ExchangeRateSnapshotRepository;
 import com.trabalho.gestao_acoes.domains.ExchangeRateSnapshot;
 import com.trabalho.gestao_acoes.services.exceptions.BusinessException;
+import com.trabalho.gestao_acoes.services.exceptions.ConflictException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -86,6 +90,7 @@ class CarteiraConcurrencyIntegrationTest {
     }
 
     @Autowired private CarteiraTransactionService service;
+    @Autowired private OperationLedgerService ledger;
     @Autowired private AcaoRepository assets;
     @Autowired private CorretoraRepository brokers;
     @Autowired private PosicaoCarteiraRepository positions;
@@ -148,7 +153,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
                 result.next();
-                assertThat(result.getLong(1)).isEqualTo(11);
+                assertThat(result.getLong(1)).isEqualTo(15);
             }
             try (var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangeloglock WHERE locked = false")) {
                 result.next();
@@ -159,7 +164,7 @@ class CarteiraConcurrencyIntegrationTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement();
              var result = statement.executeQuery("SELECT COUNT(*) FROM databasechangelog")) {
             result.next();
-            assertThat(result.getLong(1)).isEqualTo(11);
+            assertThat(result.getLong(1)).isEqualTo(15);
         }
     }
 
@@ -340,6 +345,62 @@ class CarteiraConcurrencyIntegrationTest {
 
     @Test
     @Timeout(10)
+    void equivalentConcurrentLedgerCreatesWithTheSameKeyPersistOneTransaction() throws Exception {
+        OperationRequestDTO request = ledgerRequest(broker, "ledger-equivalent", 2);
+
+        List<Future<LedgerAttempt>> attempts = runTogetherValues(
+                () -> ledgerAttempt(request), () -> ledgerAttempt(request));
+
+        LedgerAttempt first = attempts.get(0).get(5, TimeUnit.SECONDS);
+        LedgerAttempt second = attempts.get(1).get(5, TimeUnit.SECONDS);
+        assertThat(first.error()).isNull();
+        assertThat(second.error()).isNull();
+        assertThat(first.operation().id()).isEqualTo(second.operation().id());
+        assertThat(transactions.findAllByPortfolioId(defaultPortfolio.getId())).hasSize(1);
+    }
+
+    @Test
+    @Timeout(10)
+    void concurrentLedgerCreatesWithSameKeyAcrossBrokersReturnIdempotencyConflict() throws Exception {
+        Corretora otherBroker = secondBroker("19131243000197");
+        List<Future<LedgerAttempt>> attempts = runTogetherValues(
+                () -> ledgerAttempt(ledgerRequest(broker, "ledger-cross-broker", 1)),
+                () -> ledgerAttempt(ledgerRequest(otherBroker, "ledger-cross-broker", 1)));
+
+        List<LedgerAttempt> results = List.of(attempts.get(0).get(5, TimeUnit.SECONDS), attempts.get(1).get(5, TimeUnit.SECONDS));
+        assertThat(results).filteredOn(result -> result.error() == null).hasSize(1);
+        assertThat(results).filteredOn(result -> result.error() != null).allSatisfy(result -> {
+            assertThat(result.error()).isInstanceOf(ConflictException.class);
+            assertThat(((ConflictException) result.error()).getCode()).isEqualTo("IDEMPOTENCY_CONFLICT");
+        });
+        assertThat(transactions.findAllByPortfolioId(defaultPortfolio.getId())).hasSize(1);
+    }
+
+    @Test
+    @Timeout(10)
+    void differentKeysRemainIndependentAndDifferentPortfoliosMayReuseAKey() throws Exception {
+        List<Future<LedgerAttempt>> attempts = runTogetherValues(
+                () -> ledgerAttempt(ledgerRequest(broker, "ledger-first", 1)),
+                () -> ledgerAttempt(ledgerRequest(broker, "ledger-second", 1)));
+        assertThat(attempts).allSatisfy(attempt -> assertThat(attempt.get(5, TimeUnit.SECONDS).error()).isNull());
+        assertThat(transactions.findAllByPortfolioId(defaultPortfolio.getId())).hasSize(2);
+
+        var otherUser = users.save(new com.trabalho.gestao_acoes.domains.UserAccount("second-owner", "second-owner@test.local", "pass", Instant.now()));
+        var otherPortfolio = portfolios.save(new com.trabalho.gestao_acoes.domains.Portfolio("Principal", otherUser, Instant.now()));
+        Acao otherAsset = new Acao(null, "VALE3", "Vale", "BRASIL", "BRL", new BigDecimal("20.00000000"), LocalDateTime.now());
+        otherAsset.setOwner(otherUser); otherAsset = assets.save(otherAsset);
+        Corretora otherBroker = new Corretora(null, "12345678000195", "Outra Corretora", "Outra", null, null, "01001000", null, null, null, null, null, "SP", "ATIVA", true, LocalDateTime.now());
+        otherBroker.setOwner(otherUser); otherBroker.setRegulatoryStatus(com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus.VERIFIED); otherBroker = brokers.save(otherBroker);
+
+        org.mockito.Mockito.when(securityUtils.currentOwnerId()).thenReturn(otherUser.getId());
+        org.mockito.Mockito.when(securityUtils.currentUser()).thenReturn(otherUser);
+        OperationDTO otherOperation = ledger.create(new OperationRequestDTO(TipoTransacao.COMPRA, otherAsset.getId(), otherBroker.getId(), LocalDateTime.of(2026, 1, 2, 12, 0), 1, "BRL", new BigDecimal("20"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "ledger-first"));
+        assertThat(otherOperation.id()).isNotNull();
+        assertThat(transactions.findAllByPortfolioId(otherPortfolio.getId())).hasSize(1);
+    }
+
+    @Test
+    @Timeout(10)
     void equivalentConcurrentAssetRegistrationsReturnExactlyOneCreatedAndOneConflict() throws Exception {
         CountDownLatch providersReady = new CountDownLatch(2);
         CountDownLatch releaseProvider = new CountDownLatch(1);
@@ -352,8 +413,10 @@ class CarteiraConcurrencyIntegrationTest {
                     Thread.currentThread().interrupt();
                     throw new AssertionError(ex);
                 }
-                return new com.trabalho.gestao_acoes.services.ports.CotacaoBolsa(new BigDecimal("30"), "BRL",
+                var quote = new com.trabalho.gestao_acoes.services.ports.CotacaoBolsa(new BigDecimal("30"), "BRL",
                         "TEST_FIXTURE", "CONCURRENCY_PROVIDER", null, null, null);
+                quote.setNomeEmpresa("Vale S.A.");
+                return quote;
             }
             public boolean suportaMercado(String market) { return "BRASIL".equals(market); }
         };
@@ -528,6 +591,47 @@ class CarteiraConcurrencyIntegrationTest {
         return plan.toString();
     }
 
+    private Corretora secondBroker(String cnpj) {
+        Corretora second = new Corretora(null, cnpj, "Segunda Corretora", "Segunda", null, null, "20040002", null, null, null, null, null, "RJ", "ATIVA", true, LocalDateTime.now());
+        second.setRegulatoryStatus(com.trabalho.gestao_acoes.domains.enums.RegulatoryStatus.VERIFIED);
+        second.setOwner(user);
+        return brokers.save(second);
+    }
+
+    private OperationRequestDTO ledgerRequest(Corretora targetBroker, String key, int quantity) {
+        return new OperationRequestDTO(TipoTransacao.COMPRA, asset.getId(), targetBroker.getId(),
+                LocalDateTime.of(2026, 1, 2, 10, 0), quantity, "BRL", new BigDecimal("20"),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "concurrent", key);
+    }
+
+    private LedgerAttempt ledgerAttempt(OperationRequestDTO request) {
+        try { return new LedgerAttempt(ledger.create(request), null); }
+        catch (Throwable error) { return new LedgerAttempt(null, error); }
+    }
+
+    private <T> List<Future<T>> runTogetherValues(Callable<T> first, Callable<T> second) {
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        Future<T> a = executor.submit(valueWrap(first, ready, start));
+        Future<T> b = executor.submit(valueWrap(second, ready, start));
+        try {
+            if (!ready.await(2, TimeUnit.SECONDS)) throw new AssertionError("workers did not reach the barrier");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(ex);
+        }
+        start.countDown();
+        return List.of(a, b);
+    }
+
+    private <T> Callable<T> valueWrap(Callable<T> action, CountDownLatch ready, CountDownLatch start) {
+        return () -> {
+            ready.countDown();
+            if (!start.await(2, TimeUnit.SECONDS)) throw new AssertionError("start barrier timed out");
+            return action.call();
+        };
+    }
+
     private List<Future<Throwable>> runTogether(ThrowingAction first, ThrowingAction second) {
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -556,4 +660,5 @@ class CarteiraConcurrencyIntegrationTest {
 
     @FunctionalInterface
     private interface ThrowingAction { void run(); }
+    private record LedgerAttempt(OperationDTO operation, Throwable error) { }
 }

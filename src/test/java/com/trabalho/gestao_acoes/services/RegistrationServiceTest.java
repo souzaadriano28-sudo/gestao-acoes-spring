@@ -50,16 +50,17 @@ class RegistrationServiceTest {
         var registered = new java.util.HashSet<String>();
         when(securityUtils.currentOwnerId()).thenAnswer(invocation -> currentOwner[0].getId());
         when(securityUtils.currentUser()).thenAnswer(invocation -> currentOwner[0]);
-        when(repository.findByTickerAndOwnerId(anyString(), anyLong())).thenAnswer(invocation ->
-                registered.contains(invocation.getArgument(1) + ":" + invocation.getArgument(0))
+        when(repository.findByTickerAndMercadoAndOwnerId(anyString(), anyString(), anyLong())).thenAnswer(invocation ->
+                registered.contains(invocation.getArgument(2) + ":" + invocation.getArgument(0) + ":" + invocation.getArgument(1))
                         ? java.util.Optional.of(new Acao()) : java.util.Optional.empty());
         when(repository.save(any(Acao.class))).thenAnswer(invocation -> {
             Acao saved = invocation.getArgument(0);
-            registered.add(saved.getOwner().getId() + ":" + saved.getTicker());
+            registered.add(saved.getOwner().getId() + ":" + saved.getTicker() + ":" + saved.getMercado());
             return saved;
         });
-        when(quotes.buscar("PETR4", "BRASIL"))
-                .thenReturn(new com.trabalho.gestao_acoes.services.ports.CotacaoBolsa(new java.math.BigDecimal("20"), "BRL"));
+        var quote = new com.trabalho.gestao_acoes.services.ports.CotacaoBolsa(new java.math.BigDecimal("20"), "BRL");
+        quote.setNomeEmpresa("PetrÃ³leo Brasileiro S.A.");
+        when(quotes.buscar("PETR4", "BRASIL")).thenReturn(quote);
 
         AcaoService service = new AcaoService(repository, quotes, securityUtils);
         service.insert(assetRequest("PETR4"));

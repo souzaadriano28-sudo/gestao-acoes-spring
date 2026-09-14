@@ -77,6 +77,12 @@ class PortfolioReadServiceTest {
         assertThat(dashboard.cost().availability()).isEqualTo(Availability.UNAVAILABLE);
         assertThat(dashboard.patrimony().availability()).isEqualTo(Availability.UNAVAILABLE);
         assertThat(dashboard.exchangeSource().reason()).isEqualTo("EXCHANGE_RATE_UNAVAILABLE");
+        assertThat(dashboard.nativeCurrencySummaries()).singleElement().satisfies(summary -> {
+            assertThat(summary.currency()).isEqualTo("USD");
+            assertThat(summary.cost().value()).isEqualByComparingTo("180.00");
+            assertThat(summary.patrimony().value()).isEqualByComparingTo("200.00");
+            assertThat(summary.unrealizedResult().value()).isEqualByComparingTo("20.00");
+        });
     }
 
     @Test void partialProviderFailureIsContainedAndDeclared() {
@@ -90,23 +96,48 @@ class PortfolioReadServiceTest {
         assertThat(dashboard.exchangeSource().reason()).isEqualTo("EXCHANGE_PROVIDER_FAILURE");
     }
 
-    @Test void staleQuoteRemainsVisibleButCannotProduceACompleteDashboardTotal() {
+    @Test void staleQuoteRemainsVisibleAndProducesStaleDashboardTotalsWithExactValues() {
         when(positions.findAllDetailed(any())).thenReturn(List.of(position(1L,
                 asset(1L, "PETR4", "BRASIL", "BRL", "20", NOW.minusSeconds(3600)), broker(), 2, "18")));
         var dashboard = service.dashboard();
         assertThat(dashboard.positions().get(0).currentQuote().availability()).isEqualTo(Availability.STALE);
         assertThat(dashboard.positions().get(0).currentQuote().value()).isEqualByComparingTo("20");
-        assertThat(dashboard.patrimony().availability()).isEqualTo(Availability.UNAVAILABLE);
+        assertThat(dashboard.patrimony().availability()).isEqualTo(Availability.STALE);
+        assertThat(dashboard.patrimony().value()).isEqualByComparingTo("40.00");
+        assertThat(dashboard.unrealizedResult().availability()).isEqualTo(Availability.STALE);
+        assertThat(dashboard.unrealizedResult().value()).isEqualByComparingTo("4.00");
+        assertThat(dashboard.nativeCurrencySummaries()).singleElement().satisfies(summary -> {
+            assertThat(summary.patrimony().availability()).isEqualTo(Availability.STALE);
+            assertThat(summary.patrimony().value()).isEqualByComparingTo("40.00");
+            assertThat(summary.unrealizedResultPercentage().availability()).isEqualTo(Availability.STALE);
+        });
     }
 
-    @Test void staleExchangeIsExposedButNeverUsedForConsolidation() {
+    @Test void singleCurrencyBrlPortfolioDoesNotRequireExchangeForAvailableTotals() {
+        when(positions.findAllDetailed(any())).thenReturn(List.of(position(1L,
+                asset(1L, "PETR4", "BRASIL", "BRL", "49.12", NOW.minusSeconds(60)), broker(), 10, "10.20")));
+        var dashboard = service.dashboard();
+        assertThat(dashboard.exchangeSource().reason()).isEqualTo("NOT_REQUIRED_FOR_SINGLE_CURRENCY_PORTFOLIO");
+        assertThat(dashboard.patrimony().availability()).isEqualTo(Availability.AVAILABLE);
+        assertThat(dashboard.patrimony().value()).isEqualByComparingTo("491.20");
+        assertThat(dashboard.unrealizedResult().availability()).isEqualTo(Availability.AVAILABLE);
+        assertThat(dashboard.unrealizedResult().value()).isEqualByComparingTo("389.20");
+        verifyNoInteractions(exchange);
+    }
+
+    @Test void staleExchangeIsExposedAndKeepsMixedCurrencyTotalsStaleWithValues() {
         when(positions.findAllDetailed(any())).thenReturn(List.of(position(1L,
                 asset(1L, "AAPL", "AMERICANO", "USD", "100", NOW.minusSeconds(60)), broker(), 1, "90")));
         when(exchange.find("USD", "BRL")).thenReturn(Optional.of(rate("5.25", NOW.minus(Duration.ofDays(3)))));
         var dashboard = service.dashboard();
         assertThat(dashboard.exchangeSource().availability()).isEqualTo(Availability.STALE);
         assertThat(dashboard.exchangeSource().rate()).isEqualByComparingTo("5.25");
-        assertThat(dashboard.patrimony().availability()).isEqualTo(Availability.UNAVAILABLE);
+        assertThat(dashboard.patrimony().availability()).isEqualTo(Availability.STALE);
+        assertThat(dashboard.patrimony().value()).isEqualByComparingTo("525.00");
+        assertThat(dashboard.cost().availability()).isEqualTo(Availability.STALE);
+        assertThat(dashboard.cost().value()).isEqualByComparingTo("472.50");
+        assertThat(dashboard.unrealizedResult().availability()).isEqualTo(Availability.STALE);
+        assertThat(dashboard.unrealizedResult().value()).isEqualByComparingTo("52.50");
     }
 
     @Test void movementFiltersRejectInvalidPagingTypePeriodAndBrokerBeforeQuerying() {

@@ -39,10 +39,18 @@ BEGIN
       ('transacao','data_hora','timestamp without time zone','NO',NULL,NULL,NULL), ('transacao','acao_id','bigint','NO',NULL,NULL,NULL),
       ('transacao','corretora_id','bigint','NO',NULL,NULL,NULL),
       ('transacao','portfolio_id','bigint','NO',NULL,NULL,NULL),
+      ('transacao','moeda','character varying','NO',3,NULL,NULL),
+      ('transacao','corretagem','numeric','NO',NULL,19,8), ('transacao','taxas','numeric','NO',NULL,19,8),
+      ('transacao','impostos','numeric','NO',NULL,19,8), ('transacao','outros_custos','numeric','NO',NULL,19,8),
+      ('transacao','valor_bruto','numeric','NO',NULL,19,8), ('transacao','valor_total','numeric','NO',NULL,19,8),
+      ('transacao','observacao','character varying','YES',2000,NULL,NULL),
+      ('transacao','idempotency_key','character varying','YES',100,NULL,NULL),
+      ('transacao','resultado_realizado','numeric','NO',NULL,19,8),
       ('posicao_carteira','id','bigint','NO',NULL,NULL,NULL), ('posicao_carteira','quantidade_total','integer','NO',NULL,NULL,NULL),
       ('posicao_carteira','preco_medio','numeric','NO',NULL,19,8), ('posicao_carteira','acao_id','bigint','NO',NULL,NULL,NULL),
       ('posicao_carteira','corretora_id','bigint','NO',NULL,NULL,NULL),
       ('posicao_carteira','portfolio_id','bigint','NO',NULL,NULL,NULL),
+      ('posicao_carteira','resultado_realizado','numeric','NO',NULL,19,8),
       ('exchange_rate_snapshot','id','bigint','NO',NULL,NULL,NULL),
       ('exchange_rate_snapshot','base_currency','character varying','NO',3,NULL,NULL),
       ('exchange_rate_snapshot','quote_currency','character varying','NO',3,NULL,NULL),
@@ -71,8 +79,8 @@ BEGIN
     ('acao','id'),('acao','ticker'),('acao','nome_empresa'),('acao','mercado'),('acao','moeda'),('acao','cotacao_atual'),('acao','data_hora_cotacao'),
     ('acao','quote_source_type'),('acao','quote_provider'),('acao','quote_reference_at'),('acao','quote_fetched_at'),('acao','quote_reference_kind'),('acao','owner_id'),
     ('corretora','id'),('corretora','cnpj'),('corretora','razao_social'),('corretora','nome_fantasia'),('corretora','email'),('corretora','telefone'),('corretora','cep'),('corretora','logradouro'),('corretora','numero'),('corretora','complemento'),('corretora','bairro'),('corretora','cidade'),('corretora','uf'),('corretora','situacao_cadastral'),('corretora','validada_na_cvm'),('corretora','data_cadastro'),('corretora','regulatory_status'),('corretora','regulatory_category'),('corretora','regulatory_source'),('corretora','regulatory_evidence_id'),('corretora','regulatory_reference_at'),('corretora','regulatory_checked_at'),('corretora','regulatory_reason'),('corretora','owner_id'),
-    ('transacao','id'),('transacao','tipo'),('transacao','quantidade'),('transacao','preco_unitario'),('transacao','data_hora'),('transacao','acao_id'),('transacao','corretora_id'),('transacao','portfolio_id'),
-    ('posicao_carteira','id'),('posicao_carteira','quantidade_total'),('posicao_carteira','preco_medio'),('posicao_carteira','acao_id'),('posicao_carteira','corretora_id'),('posicao_carteira','portfolio_id'),
+    ('transacao','id'),('transacao','tipo'),('transacao','quantidade'),('transacao','preco_unitario'),('transacao','data_hora'),('transacao','acao_id'),('transacao','corretora_id'),('transacao','portfolio_id'),('transacao','moeda'),('transacao','corretagem'),('transacao','taxas'),('transacao','impostos'),('transacao','outros_custos'),('transacao','valor_bruto'),('transacao','valor_total'),('transacao','observacao'),('transacao','idempotency_key'),('transacao','resultado_realizado'),
+    ('posicao_carteira','id'),('posicao_carteira','quantidade_total'),('posicao_carteira','preco_medio'),('posicao_carteira','acao_id'),('posicao_carteira','corretora_id'),('posicao_carteira','portfolio_id'),('posicao_carteira','resultado_realizado'),
     ('exchange_rate_snapshot','id'),('exchange_rate_snapshot','base_currency'),('exchange_rate_snapshot','quote_currency'),('exchange_rate_snapshot','rate'),('exchange_rate_snapshot','source_type'),('exchange_rate_snapshot','provider'),('exchange_rate_snapshot','reference_at'),('exchange_rate_snapshot','fetched_at'),('exchange_rate_snapshot','reference_kind'),
     ('user_account','id'),('user_account','username'),('user_account','email'),('user_account','password_hash'),('user_account','enabled'),('user_account','failed_attempts'),('user_account','failure_window_started_at'),('user_account','locked_until'),('user_account','created_at'),('user_account','updated_at'),('user_account','version'),
     ('portfolio','id'),('portfolio','name'),('portfolio','owner_id'),('portfolio','created_at'))
@@ -85,7 +93,7 @@ BEGIN
   SELECT required.name INTO missing_constraint FROM (VALUES
     ('pk_acao'),('pk_corretora'),('pk_transacao'),('pk_posicao_carteira'),('pk_exchange_rate_snapshot'),
     ('pk_user_account'),('pk_portfolio'),
-    ('uk_acao_ticker_owner'),('uk_corretora_cnpj_owner'),('uk_posicao_acao_corretora_portfolio'),('uk_exchange_rate_pair'),
+    ('uk_acao_ticker_market_owner'),('uk_corretora_cnpj_owner'),('uk_posicao_acao_corretora_portfolio'),('uk_exchange_rate_pair'),('uk_transacao_portfolio_idempotency'),
     ('uk_user_account_username'),('uk_user_account_email'),
     ('fk_transacao_acao'),('fk_transacao_corretora'),('fk_posicao_acao'),('fk_posicao_corretora'),
     ('fk_acao_owner'),('fk_corretora_owner'),('fk_portfolio_owner'),('fk_transacao_portfolio'),('fk_posicao_portfolio'),
@@ -93,5 +101,66 @@ BEGIN
     ('ck_exchange_rate_positive'),('ck_corretora_regulatory_status')) required(name)
   WHERE NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname=required.name) LIMIT 1;
   IF missing_constraint IS NOT NULL THEN RAISE EXCEPTION 'schema equivalence: missing constraint %', missing_constraint; END IF;
+
+  -- Names alone are not enough: the ownership-scoped unique keys must have their
+  -- exact expected columns and order.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    WHERE c.contype = 'u' AND c.conname = 'uk_acao_ticker_market_owner' AND t.relname = 'acao'
+      AND c.conkey = ARRAY[
+        (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'ticker'),
+        (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'mercado'),
+        (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'owner_id')
+      ]::smallint[]
+  ) THEN RAISE EXCEPTION 'schema equivalence: divergent owner-scoped unique on acao(ticker,mercado,owner_id)'; END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    WHERE c.contype = 'u' AND c.conname = 'uk_corretora_cnpj_owner' AND t.relname = 'corretora'
+      AND c.conkey = ARRAY[
+        (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'cnpj'),
+        (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'owner_id')
+      ]::smallint[]
+  ) THEN RAISE EXCEPTION 'schema equivalence: divergent owner-scoped unique on corretora(cnpj,owner_id)'; END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    WHERE c.contype = 'u' AND c.conname = 'uk_posicao_acao_corretora_portfolio' AND t.relname = 'posicao_carteira'
+      AND c.conkey = ARRAY[
+        (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'acao_id'),
+        (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'corretora_id'),
+        (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'portfolio_id')
+      ]::smallint[]
+  ) THEN RAISE EXCEPTION 'schema equivalence: divergent owner-scoped unique on posicao_carteira(acao_id,corretora_id,portfolio_id)'; END IF;
+
+  -- Reject residual global unique constraints and standalone unique indexes. A
+  -- primary key is excluded, and only a single ticker/cnpj key is considered global.
+  SELECT format('%I.%I', n.nspname, t.relname) INTO missing_constraint
+  FROM pg_constraint c
+  JOIN pg_class t ON t.oid = c.conrelid
+  JOIN pg_namespace n ON n.oid = t.relnamespace
+  WHERE n.nspname = current_schema() AND c.contype = 'u'
+    AND ((t.relname = 'acao' AND c.conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'ticker')]::smallint[])
+      OR (t.relname = 'corretora' AND c.conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'cnpj')]::smallint[]))
+  LIMIT 1;
+  IF missing_constraint IS NOT NULL THEN RAISE EXCEPTION 'schema equivalence: residual global unique constraint on %', missing_constraint; END IF;
+
+  SELECT format('%I.%I', n.nspname, t.relname) INTO missing_constraint
+  FROM pg_index i
+  JOIN pg_class t ON t.oid = i.indrelid
+  JOIN pg_namespace n ON n.oid = t.relnamespace
+  LEFT JOIN pg_constraint c ON c.conindid = i.indexrelid
+  WHERE n.nspname = current_schema() AND i.indisunique AND NOT i.indisprimary AND c.oid IS NULL
+    AND ((t.relname = 'acao' AND i.indnkeyatts = 1 AND (SELECT key_column.attnum
+          FROM unnest(i.indkey) WITH ORDINALITY AS key_column(attnum, ordinality)
+          WHERE key_column.ordinality = 1) = (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'ticker'))
+      OR (t.relname = 'corretora' AND i.indnkeyatts = 1 AND (SELECT key_column.attnum
+          FROM unnest(i.indkey) WITH ORDINALITY AS key_column(attnum, ordinality)
+          WHERE key_column.ordinality = 1) = (SELECT attnum FROM pg_attribute WHERE attrelid = t.oid AND attname = 'cnpj')))
+  LIMIT 1;
+  IF missing_constraint IS NOT NULL THEN RAISE EXCEPTION 'schema equivalence: residual global unique index on %', missing_constraint; END IF;
 END
 $schema_contract$;

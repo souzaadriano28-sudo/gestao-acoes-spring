@@ -4,6 +4,7 @@ import com.trabalho.gestao_acoes.domains.*;
 import com.trabalho.gestao_acoes.domains.enums.*;
 import com.trabalho.gestao_acoes.repositories.*;
 import com.trabalho.gestao_acoes.services.ports.*;
+import com.trabalho.gestao_acoes.domains.dtos.OperationRequestDTO;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.Optional;
@@ -20,6 +21,7 @@ import static org.mockito.Mockito.*;
 @ActiveProfiles("test")
 class PortfolioReadIntegrationTest {
     @Autowired private PortfolioReadService service;
+    @Autowired private OperationLedgerService ledger;
     @Autowired private AcaoRepository assets;
     @Autowired private CorretoraRepository brokers;
     @Autowired private PosicaoCarteiraRepository positions;
@@ -55,7 +57,7 @@ class PortfolioReadIntegrationTest {
     }
 
     @Test void persistedPositionAndMovementsProduceEnrichedDeterministicReads() {
-        Instant now = Instant.now();
+        Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         Corretora broker = brokers.save(broker("11222333000181", "Corretora Um"));
         Acao asset = assets.save(asset("PETR4", "BRASIL", "BRL", "22.50", now.minusSeconds(60), true));
 
@@ -78,6 +80,19 @@ class PortfolioReadIntegrationTest {
         assertThat(dashboard.cost().value()).isEqualByComparingTo("80.00");
         assertThat(dashboard.unrealizedResult().value()).isEqualByComparingTo("10.00");
         assertThat(dashboard.positions().get(0).positionId()).isNotNull();
+        var detail = dashboard.positions().get(0);
+        assertThat(detail.assetName()).isEqualTo("PETR4");
+        assertThat(detail.brokerName()).isEqualTo("Corretora Um");
+        assertThat(detail.nativeCurrency()).isEqualTo("BRL");
+        assertThat(detail.quantity()).isEqualTo(4);
+        assertThat(detail.averagePrice().value()).isEqualByComparingTo("20.00");
+        assertThat(detail.cost().value()).isEqualByComparingTo("80.00");
+        assertThat(detail.currentQuote().value()).isEqualByComparingTo("22.50");
+        assertThat(detail.quoteProvenance().referenceAt().truncatedTo(java.time.temporal.ChronoUnit.MICROS)).isEqualTo(now.minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS));
+        assertThat(detail.marketValue().value()).isEqualByComparingTo("90.00");
+        assertThat(detail.unrealizedResult().value()).isEqualByComparingTo("10.00");
+        assertThat(detail.unrealizedResultPercentage().value()).isEqualByComparingTo("12.5000");
+        assertThat(detail.realizedResult().value()).isEqualByComparingTo("0");
         assertThat(movements.items()).hasSize(2);
         assertThat(movements.items().get(0).id()).isEqualTo(newest.getId());
         assertThat(movements.items().get(0).recordedAt().getOffset()).isNotNull();
@@ -97,6 +112,8 @@ class PortfolioReadIntegrationTest {
         assertThat(dashboard.positions().get(0).quantity()).isEqualTo(3);
         assertThat(dashboard.positions().get(0).cost().value()).isEqualByComparingTo("165.00");
         assertThat(dashboard.positions().get(0).marketValue().availability()).isEqualTo(Availability.UNAVAILABLE);
+        assertThat(dashboard.positions().get(0).currentQuote().availability()).isEqualTo(Availability.UNAVAILABLE);
+        assertThat(dashboard.positions().get(0).unrealizedResult().availability()).isEqualTo(Availability.UNAVAILABLE);
         assertThat(dashboard.patrimony().availability()).isEqualTo(Availability.UNAVAILABLE);
     }
 
@@ -137,6 +154,21 @@ class PortfolioReadIntegrationTest {
         assertThat(page.items()).extracting(item -> item.ticker()).containsOnly("ITUB4");
     }
 
+    @Test void closedPositionLeavesOpenPositionsButKeepsRealizedResultInMovementHistory() {
+        Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        Corretora broker = brokers.save(broker("66777888000181", "Corretora Fechada"));
+        broker.setRegulatoryStatus(RegulatoryStatus.VERIFIED); brokers.saveAndFlush(broker);
+        Acao asset = assets.save(asset("CLOSE3", "BRASIL", "BRL", "15.00", now.minusSeconds(60), true));
+        var purchase = new OperationRequestDTO(TipoTransacao.COMPRA, asset.getId(), broker.getId(), LocalDateTime.of(2026, 2, 1, 10, 0), 2, "BRL", new BigDecimal("10.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "compra", "closed-buy");
+        var sale = new OperationRequestDTO(TipoTransacao.VENDA, asset.getId(), broker.getId(), LocalDateTime.of(2026, 2, 2, 10, 0), 2, "BRL", new BigDecimal("15.00"), new BigDecimal("1.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "venda", "closed-sale");
+        ledger.create(purchase); var sold = ledger.create(sale);
+        assertThat(service.detailedPositions(0, 20, "BRASIL", broker.getId()).items()).isEmpty();
+        assertThat(transactions.findByIdAndPortfolioId(sold.id(), defaultPortfolio.getId()).orElseThrow().getResultadoRealizado()).isEqualByComparingTo("9.00000000");
+        var history = service.movements(0, 20, "VENDA", "CLOSE3", broker.getId(), null, null);
+        assertThat(history.items()).hasSize(1);
+        // Closed groups are intentionally absent from open positions; the realized result is retained in the ledger transaction above.
+    }
+
     private Acao asset(String ticker, String market, String currency, String quote, Instant reference, boolean provenance) {
         Acao asset = new Acao(null, ticker, ticker, market, currency, new BigDecimal(quote), LocalDateTime.now());
         if (provenance) {
@@ -151,6 +183,7 @@ class PortfolioReadIntegrationTest {
         Corretora broker = new Corretora();
         broker.setCnpj(cnpj); broker.setRazaoSocial(name); broker.setCep("01001000");
         broker.setValidadaNaCvm(false); broker.setDataCadastro(LocalDateTime.now());
+        broker.setRegulatoryStatus(RegulatoryStatus.VERIFIED);
         broker.setOwner(user);
         return broker;
     }

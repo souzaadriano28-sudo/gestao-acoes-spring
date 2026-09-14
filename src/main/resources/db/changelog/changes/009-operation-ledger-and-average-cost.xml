@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <!-- Existing rows retain their recorded price/date; currency is derived only from their already-linked asset. -->
+    <changeSet id="009-operation-ledger-and-average-cost" author="atlas-carteira">
+        <addColumn tableName="transacao">
+            <column name="moeda" type="VARCHAR(3)"/>
+            <column name="corretagem" type="DECIMAL(19,8)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="taxas" type="DECIMAL(19,8)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="impostos" type="DECIMAL(19,8)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="outros_custos" type="DECIMAL(19,8)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="valor_bruto" type="DECIMAL(19,8)"/>
+            <column name="valor_total" type="DECIMAL(19,8)"/>
+            <column name="observacao" type="VARCHAR(2000)"/>
+            <column name="idempotency_key" type="VARCHAR(100)"/>
+        </addColumn>
+        <sql>UPDATE transacao t SET moeda = (SELECT a.moeda FROM acao a WHERE a.id = t.acao_id), valor_bruto = preco_unitario * quantidade, valor_total = preco_unitario * quantidade</sql>
+        <addNotNullConstraint tableName="transacao" columnName="moeda" columnDataType="VARCHAR(3)"/>
+        <addNotNullConstraint tableName="transacao" columnName="valor_bruto" columnDataType="DECIMAL(19,8)"/>
+        <addNotNullConstraint tableName="transacao" columnName="valor_total" columnDataType="DECIMAL(19,8)"/>
+        <addColumn tableName="posicao_carteira"><column name="resultado_realizado" type="DECIMAL(19,8)" defaultValueNumeric="0"><constraints nullable="false"/></column></addColumn>
+        <createIndex tableName="transacao" indexName="ix_transacao_replay"><column name="portfolio_id"/><column name="acao_id"/><column name="corretora_id"/><column name="moeda"/><column name="data_hora"/><column name="id"/></createIndex>
+        <addUniqueConstraint tableName="transacao" columnNames="portfolio_id,idempotency_key" constraintName="uk_transacao_portfolio_idempotency"/>
+        <rollback>
+            <dropUniqueConstraint tableName="transacao" constraintName="uk_transacao_portfolio_idempotency"/>
+            <dropIndex tableName="transacao" indexName="ix_transacao_replay"/>
+            <dropColumn tableName="posicao_carteira" columnName="resultado_realizado"/>
+            <dropColumn tableName="transacao" columnName="idempotency_key"/><dropColumn tableName="transacao" columnName="observacao"/>
+            <dropColumn tableName="transacao" columnName="valor_total"/><dropColumn tableName="transacao" columnName="valor_bruto"/>
+            <dropColumn tableName="transacao" columnName="outros_custos"/><dropColumn tableName="transacao" columnName="impostos"/>
+            <dropColumn tableName="transacao" columnName="taxas"/><dropColumn tableName="transacao" columnName="corretagem"/><dropColumn tableName="transacao" columnName="moeda"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

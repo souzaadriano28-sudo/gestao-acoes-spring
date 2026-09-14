@@ -12,4 +12,6 @@
     <include file="db/changelog/changes/006-secure-multi-user-ownership.xml"/>
     <include file="db/changelog/changes/007-correct-broker-cnpj-ownership.xml"/>
     <include file="db/changelog/changes/008-acao-owner-market-uniqueness.xml"/>
+    <include file="db/changelog/changes/009-operation-ledger-and-average-cost.xml"/>
+    <include file="db/changelog/changes/010-operation-realized-result.xml"/>
 </databaseChangeLog>

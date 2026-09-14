@@ -75,6 +75,7 @@ public class CarteiraTransactionService {
         position.setPrecoMedio(MoneyPolicy.average(position.getPrecoMedio(), position.getQuantidadeTotal(), price, quantity, total));
         position.setQuantidadeTotal(total);
         Transacao tx = new Transacao(null, TipoTransacao.COMPRA, quantity, price, LocalDateTime.now(), asset, broker);
+        completeLegacyLedger(tx, asset.getMoeda(), quantity, price);
         tx.setPortfolio(portfolio);
         transactions.save(tx);
         positions.save(position);
@@ -95,6 +96,7 @@ public class CarteiraTransactionService {
         }
         int remaining = position.getQuantidadeTotal() - quantity;
         Transacao tx = new Transacao(null, TipoTransacao.VENDA, quantity, price, LocalDateTime.now(), asset, broker);
+        completeLegacyLedger(tx, asset.getMoeda(), quantity, price);
         tx.setPortfolio(portfolio);
         transactions.save(tx);
         if (remaining == 0) positions.delete(position);
@@ -116,5 +118,16 @@ public class CarteiraTransactionService {
         if (assetId == null || assetId <= 0 || brokerId == null || brokerId <= 0 || quantity <= 0) {
             throw new BusinessException("VALIDATION_ERROR", "Ativo, corretora e quantidade devem ser positivos.");
         }
+    }
+
+    private void completeLegacyLedger(Transacao tx, String currency, int quantity, BigDecimal price) {
+        BigDecimal gross = price.multiply(BigDecimal.valueOf(quantity)).setScale(MoneyPolicy.PRICE_SCALE, MoneyPolicy.ROUNDING);
+        tx.setMoeda(currency);
+        tx.setCorretagem(BigDecimal.ZERO.setScale(MoneyPolicy.PRICE_SCALE));
+        tx.setTaxas(BigDecimal.ZERO.setScale(MoneyPolicy.PRICE_SCALE));
+        tx.setImpostos(BigDecimal.ZERO.setScale(MoneyPolicy.PRICE_SCALE));
+        tx.setOutrosCustos(BigDecimal.ZERO.setScale(MoneyPolicy.PRICE_SCALE));
+        tx.setValorBruto(gross);
+        tx.setValorTotal(gross);
     }
 }

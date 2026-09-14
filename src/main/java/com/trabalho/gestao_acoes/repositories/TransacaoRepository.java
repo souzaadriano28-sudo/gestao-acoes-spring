@@ -21,11 +21,13 @@ public interface TransacaoRepository extends JpaRepository<Transacao, Long> {
             "and (:ticker is null or t.acao.ticker = :ticker) " +
             "and (:brokerId is null or t.corretora.id = :brokerId) " +
             "and t.dataHora >= coalesce(:fromDate, t.dataHora) " +
-            "and t.dataHora <= coalesce(:toDate, t.dataHora)")
+            "and t.dataHora <= coalesce(:toDate, t.dataHora) order by t.dataHora desc, t.id desc")
     Page<Transacao> findMovements(@Param("portfolioId") Long portfolioId, @Param("type") TipoTransacao type, @Param("ticker") String ticker,
             @Param("brokerId") Long brokerId, @Param("fromDate") LocalDateTime fromDate,
             @Param("toDate") LocalDateTime toDate, Pageable pageable);
 
     List<Transacao> findAllByPortfolioId(Long portfolioId);
     Optional<Transacao> findByIdAndPortfolioId(Long id, Long portfolioId);
+    Optional<Transacao> findByPortfolioIdAndIdempotencyKey(Long portfolioId, String idempotencyKey);
+    List<Transacao> findByPortfolioIdAndAcaoIdAndCorretoraIdAndMoedaOrderByDataHoraAscIdAsc(Long portfolioId, Long acaoId, Long corretoraId, String moeda);
 }

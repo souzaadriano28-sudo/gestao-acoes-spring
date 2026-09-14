@@ -46,4 +46,16 @@ public final class MoneyPolicy {
             throw new BusinessException("NUMERIC_LIMIT_EXCEEDED", "O total excede os limites numéricos suportados.");
         }
     }
+
+    public static BigDecimal amount(BigDecimal value, String field) {
+        if (value == null) return BigDecimal.ZERO.setScale(PRICE_SCALE, ROUNDING);
+        if (value.signum() < 0) throw new BusinessException("VALIDATION_ERROR", field + " não pode ser negativo.", field);
+        try { return value.setScale(PRICE_SCALE, ROUNDING); }
+        catch (ArithmeticException ex) { throw new BusinessException("NUMERIC_LIMIT_EXCEEDED", "Valor fora dos limites suportados.", field); }
+    }
+
+    public static BigDecimal operationTotal(BigDecimal quantity, BigDecimal unitPrice, BigDecimal costs, boolean purchase) {
+        BigDecimal gross = unitPrice.multiply(quantity);
+        return purchase ? gross.add(costs).setScale(PRICE_SCALE, ROUNDING) : gross.subtract(costs).setScale(PRICE_SCALE, ROUNDING);
+    }
 }
