@@ -263,8 +263,8 @@ O resultado é uma API **organizada, escalável e próxima de sistemas reais do 
 
 ---
 
-👥Desenvolvedores
+👥Desenvolvedor
 
-Adriano Alves, Breno Rogerio e Vinicius Oliveira
+Adriano Alves
 
 ---
